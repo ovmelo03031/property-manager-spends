@@ -1,0 +1,17 @@
+{
+  "name": "gastos-gate-towers",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Registro de gastos, comprobantes y documentos del apartamento 2810 en Gate Tower 1 (Al Reem Island).",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "express": "^4.21.2"
+  }
+}

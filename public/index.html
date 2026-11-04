@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0E5A66">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gastos 2810">
+<title>Gastos Gate Towers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="meta">
+      <span class="eyebrow">Gate Tower 1 · Unidad 28-10 · Al Reem Island</span>
+      <h1>Gastos del apartamento</h1>
+      <span class="muted" id="sub">Compra, remodelación y gastos recurrentes, con sus comprobantes. Montos en AED.</span>
+    </div>
+    <div class="actions">
+      <button class="btn" id="btnCsv" hidden>Exportar a Excel (CSV)</button>
+      <button class="btn primary" id="btnNew">+ Nuevo gasto</button>
+    </div>
+  </header>
+
+  <div id="status" class="notice" hidden></div>
+
+  <section class="figs" aria-label="Totales">
+    <div class="fig"><span class="eyebrow">Compra</span><span class="v" id="tCompra">—</span><span class="s" id="tCompraS">&nbsp;</span></div>
+    <div class="fig"><span class="eyebrow">Remodelación</span><span class="v" id="tRemo">—</span><span class="s" id="tRemoS">&nbsp;</span></div>
+    <div class="fig"><span class="eyebrow">Recurrentes</span><span class="v" id="tRec">—</span><span class="s" id="tRecS">&nbsp;</span></div>
+    <div class="fig total"><span class="eyebrow">Total pagado</span><span class="v" id="tAll">—</span><span class="s" id="tAllS">&nbsp;</span></div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-mov" aria-selected="true">Movimientos</button>
+    <button class="tab" role="tab" id="tab-casa" aria-selected="false">Vivienda y crédito</button>
+    <button class="tab" role="tab" id="tab-fees" aria-selected="false">Costos de compra</button>
+    <button class="tab" role="tab" id="tab-docs" aria-selected="false">Documentos</button>
+  </nav>
+
+  <section id="view-mov" style="display:flex;flex-direction:column;gap:14px">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Buscar concepto, proveedor, nota…" aria-label="Buscar">
+      <div class="chips" id="stageChips"></div>
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <section id="view-casa" hidden style="flex-direction:column;gap:14px">
+    <div class="params three">
+      <label class="f">Precio de compra (AED)<input id="pPrecio" type="number" inputmode="decimal" min="0" step="1000"></label>
+      <label class="f">Monto hipoteca (AED)<span class="h">0 si pagas de contado</span><input id="pLoan" type="number" inputmode="decimal" min="0" step="1000"></label>
+      <label class="f">Banco<span class="h">&nbsp;</span><input id="pBanco" type="text" placeholder="Ej. FAB, ADCB, Emirates NBD"></label>
+      <label class="f">Tasa anual (%)<input id="pTasa" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ej. 4.49"></label>
+      <label class="f">Plazo (años)<input id="pPlazo" type="number" inputmode="numeric" min="0" max="30" step="1" placeholder="Ej. 25"></label>
+      <label class="f">Primera cuota<input id="pInicio" type="date"></label>
+    </div>
+    <div class="fees"><table>
+      <thead><tr><th>La vivienda</th><th class="n">Monto</th><th>Detalle</th></tr></thead>
+      <tbody id="casaBody"></tbody>
+    </table></div>
+    <div class="fees"><table>
+      <thead><tr><th>Hipoteca</th><th class="n">Monto</th><th>Detalle</th></tr></thead>
+      <tbody id="hipBody"></tbody>
+    </table></div>
+    <div class="fees"><table>
+      <thead><tr><th>Costo total de la vivienda</th><th class="n">Estimado</th><th class="n">Pagado de tu bolsillo</th></tr></thead>
+      <tbody id="totBody"></tbody>
+      <tfoot><tr><td>Total</td><td class="n" id="totEst">—</td><td class="n" id="totPag">—</td></tr></tfoot>
+    </table></div>
+    <p class="src">Las cuotas se registran como gastos en Recurrentes → Cuota hipotecaria; los pagos extra, en Abono extra a capital. El saldo, el capital y los intereses son estimados con tabla de amortización francesa (cuota fija) a partir de la tasa y el plazo; el saldo exacto lo da el estado de cuenta del banco.</p>
+  </section>
+
+  <section id="view-fees" hidden style="flex-direction:column;gap:14px">
+    <p class="muted" style="margin:0;font-size:13px">El precio y el monto de la hipoteca se editan en Vivienda y crédito.</p>
+    <div class="params three" id="params" style="max-width:840px">
+      <label class="f">Área (sq ft)<input id="pArea" type="number" inputmode="decimal" min="0" step="1"></label>
+      <label class="f">Service charge (AED / sq ft / año)<input id="pSc" type="number" inputmode="decimal" min="0" step="0.01" placeholder="14.5"></label>
+      <label class="f">Registro 2% lo paga<select id="pShare"><option value="1">Comprador (100%)</option><option value="0.5">Mitad y mitad</option></select></label>
+    </div>
+    <div class="fees"><table>
+      <thead><tr><th>Concepto</th><th class="n">Estimado</th><th class="n">Registrado</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="feeBody"></tbody>
+      <tfoot><tr><td>Total costos de cierre</td><td class="n" id="feeEst">—</td><td class="n" id="feeReg">—</td><td colspan="2"></td></tr></tfoot>
+    </table></div>
+    <div class="fees"><table>
+      <thead><tr><th>Recurrente de referencia</th><th class="n">Estimado anual</th><th class="n">Registrado</th><th></th></tr></thead>
+      <tbody id="recBody"></tbody>
+    </table></div>
+    <p class="src">Estimados orientativos con tarifas usuales en Abu Dhabi (2026): Las cifras marcadas «MOU» salen del MOU con Del Pilar Real Estate (07 oct 2026): transfer fee 2%, tarifa electrónica ADGM, conveyancing, NOC de Aldar y comisión 2% + IVA; Al Reem Island registra la propiedad en ADGM. Comisión del banco (hasta 1% + IVA) y tasación (AED 2,500–3,500 + IVA) son estimados usuales; los fija tu banco. El service charge de Gate Towers (≈ AED 13–14.5 por sq ft al año) sale de anuncios y cambia; confírmalo con el administrador. No es asesoría legal ni financiera.</p>
+  </section>
+
+  <section id="view-docs" hidden style="flex-direction:column;gap:14px">
+    <div class="ficha" id="ficha"></div>
+    <div class="toolbar" style="justify-content:space-between">
+      <h2>Archivo de la unidad</h2>
+      <button class="btn primary" id="btnNewDoc">+ Agregar documento</button>
+    </div>
+    <div class="fees"><table>
+      <thead><tr><th>Documento</th><th>Archivos</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="docBody"></tbody>
+    </table></div>
+    <p class="src">Los recibos de pagos van con cada gasto en Movimientos; aquí guarda los documentos de la propiedad. Los de identidad (pasaporte, Emirates ID) solo si estás cómodo: quien abra esta página con acceso los verá.</p>
+  </section>
+</div>
+
+<aside class="panel" id="dPanel" hidden aria-labelledby="dTitle" role="dialog">
+  <header><h2 id="dTitle">Agregar documento</h2><button class="btn small" type="button" id="dClose">Cerrar</button></header>
+  <form id="dForm" novalidate>
+    <label class="f">Tipo<select id="dTipo"></select></label>
+    <label class="f">Nombre<input id="dNombre" type="text" placeholder="Ej. Title Deed ADGM 2026"></label>
+    <div class="grid2">
+      <label class="f">Fecha del documento<input id="dFecha" type="date"></label>
+      <label class="f">Número / referencia<input id="dRef" type="text" placeholder="Ej. N.º de título"></label>
+    </div>
+    <label class="f">Notas<textarea id="dNotas" placeholder="Dónde está el original, quién lo emitió, vencimiento…"></textarea></label>
+    <div class="f" style="display:flex;flex-direction:column;gap:8px">
+      <span style="font-size:13px;font-weight:600">Archivos</span>
+      <div class="drop" id="dDrop">
+        <span class="muted" style="font-size:13px">PDF o fotos del documento</span>
+        <label class="btn small" for="dFiles">Adjuntar archivos</label>
+        <input id="dFiles" type="file" multiple accept="image/*,application/pdf" hidden>
+      </div>
+      <div class="files" id="dFileList"></div>
+    </div>
+    <div id="dErr" class="notice" hidden></div>
+    <div id="dDelConfirm" class="confirm" hidden>
+      <span>¿Borrar este documento y sus archivos? No se puede deshacer.</span>
+      <div class="actions"><button type="button" class="btn small danger" id="dDelYes">Sí, borrar</button><button type="button" class="btn small" id="dDelNo">Cancelar</button></div>
+    </div>
+  </form>
+  <footer>
+    <button type="button" class="btn danger" id="dDel" hidden>Borrar</button>
+    <span style="flex:1"></span>
+    <button type="button" class="btn" id="dCancel">Cancelar</button>
+    <button type="submit" form="dForm" class="btn primary" id="dSave">Guardar</button>
+  </footer>
+</aside>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="panel" id="panel" hidden aria-labelledby="pTitle" role="dialog">
+  <header><h2 id="pTitle">Nuevo gasto</h2><button class="btn small" type="button" id="btnClose">Cerrar</button></header>
+  <form id="form" novalidate>
+    <div class="seg" id="segStage" role="group" aria-label="Etapa"></div>
+    <label class="f">Categoría<select id="fCat" required></select></label>
+    <label class="f">Concepto<input id="fConcepto" type="text" placeholder="Ej. Transfer fee ADGM" required></label>
+    <div class="grid2">
+      <label class="f">Fecha<input id="fFecha" type="date" required></label>
+      <label class="f">Monto (AED)<input id="fMonto" type="number" inputmode="decimal" step="0.01" min="0" required></label>
+    </div>
+    <div class="grid2">
+      <label class="f">Moneda original<span class="h">si pagaste en otra moneda</span><select id="fMon"><option value="">AED</option><option>USD</option><option>EUR</option><option>COP</option><option>MXN</option><option>GBP</option><option>Otra</option></select></label>
+      <label class="f">Monto original<span class="h">&nbsp;</span><input id="fMontoOrig" type="number" inputmode="decimal" step="0.01" min="0"></label>
+    </div>
+    <div class="grid2">
+      <label class="f">Pagado a<input id="fProv" type="text" placeholder="Ej. ADGM, Aldar, IKEA"></label>
+      <label class="f">Método<select id="fMetodo"><option value="">—</option><option>Transferencia</option><option>Tarjeta</option><option>Cheque</option><option>Gerencia (manager's cheque)</option><option>Efectivo</option><option>Débito automático</option></select></label>
+    </div>
+    <label class="f">Estado
+      <div class="seg" id="segEstado" role="group" aria-label="Estado"><button type="button" data-v="pagado">Pagado</button><button type="button" data-v="pendiente">Pendiente</button></div>
+    </label>
+    <label class="f">Notas<textarea id="fNotas" placeholder="Referencia de transferencia, número de factura, cuota 3 de 12…"></textarea></label>
+    <div class="f" style="display:flex;flex-direction:column;gap:8px">
+      <span style="font-size:13px;font-weight:600">Comprobantes</span>
+      <div class="drop" id="drop">
+        <span class="muted" style="font-size:13px">Fotos o PDF de recibos, facturas, transferencias, SPA, título…</span>
+        <label class="btn small" for="fFiles">Adjuntar archivos</label>
+        <input id="fFiles" type="file" multiple accept="image/*,application/pdf" hidden>
+      </div>
+      <div id="noUpload" class="notice" hidden>Solo quien puede editar este gasto puede subir comprobantes.</div>
+      <div class="files" id="fileList"></div>
+    </div>
+    <div id="formErr" class="notice" hidden></div>
+    <div id="delConfirm" class="confirm" hidden>
+      <span>¿Borrar este gasto y sus comprobantes? No se puede deshacer.</span>
+      <div class="actions"><button type="button" class="btn small danger" id="btnDelYes">Sí, borrar</button><button type="button" class="btn small" id="btnDelNo">Cancelar</button></div>
+    </div>
+  </form>
+  <footer>
+    <button type="button" class="btn danger" id="btnDel" hidden>Borrar</button>
+    <span style="flex:1"></span>
+    <button type="button" class="btn" id="btnCancel">Cancelar</button>
+    <button type="submit" form="form" class="btn primary" id="btnSave">Guardar</button>
+  </footer>
+</aside>
+
+<div class="viewer" id="viewer" hidden>
+  <img id="vImg" alt="Comprobante">
+  <div class="bar"><a class="btn" id="vOpen" target="_blank" rel="noopener">Abrir en pestaña nueva</a><button class="btn" id="vClose" type="button">Cerrar</button></div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="claude-shim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
