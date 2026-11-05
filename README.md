@@ -19,7 +19,7 @@ The user interface is in **Spanish** and all amounts are in **AED**.
 
 - Docker with Docker Compose on the homelab server.
 - Tailscale on the server and on every device that will use the app.
-- For local development only: Node.js 22 or newer (the Docker image uses Node 26).
+- For local development only: Bun 1.4.4 or newer.
 
 ## Installation
 
@@ -98,7 +98,7 @@ Create a backup (produces `gastos-YYYYMMDD-HHMMSS.tar.gz`; defaults to `./backup
 ./scripts/backup.sh /path/to/your/nas
 ```
 
-The script uses SQLite's online backup through the running container, so it is safe while the app is up.
+The script takes a consistent SQLite snapshot (`VACUUM INTO`) through the running container, so it is safe while the app is up.
 
 To restore: stop the container, extract the archive into `data/`, rename `gastos-backup.db` to `gastos.db`, and start the container again.
 
@@ -113,39 +113,40 @@ The app has **no authentication**. Its only protection is that it answers inside
 
 ## Local development
 
+The project uses [Bun](https://bun.sh) as runtime, package manager, and test runner. Bun runs the TypeScript sources directly, so there is no build step.
+
 ```bash
-npm install
+bun install
 ```
 
 ```bash
-npm run dev
+bun run dev
 ```
 
-The app runs at http://localhost:8080 with data in `./data`. `npm run dev` runs the TypeScript backend with `tsx` and restarts it on changes under `src/`; frontend files are served as-is, so just reload the page.
+The app runs at http://localhost:8080 with data in `./data`. `bun run dev` restarts the server on changes under `src/`; frontend files are served as-is, so just reload the page.
 
 | Script | Purpose |
 |---|---|
-| `npm run dev` | Backend in watch mode (tsx) |
-| `npm test` | API tests (`node:test`, in-process via `app.request`) |
-| `npm run typecheck` | Type-check `src/` and `test/` |
-| `npm run build` | Compile `src/` to `dist/` |
-| `npm start` | Run the compiled server (`dist/server.js`) |
+| `bun run dev` | Server in watch mode |
+| `bun test` | API tests (`bun:test`, in-process via `app.request`) |
+| `bun run typecheck` | Type-check `src/` and `test/` with `tsc` |
+| `bun run start` | Run the server without watch |
 
 ### Updating dependencies
 
-The project enforces a 7-day supply-chain cooldown: `.npmrc` sets `min-release-age=7`, so npm only installs versions published more than a week ago. Most malicious npm releases are detected and pulled within hours or days, so this window avoids them while staying close to the latest releases.
+The project enforces a 7-day supply-chain cooldown: `bunfig.toml` sets `minimumReleaseAge = 604800` (seconds), so Bun only installs versions published more than a week ago. Most malicious npm releases are detected and pulled within hours or days, so this window avoids them while staying close to the latest releases.
 
 ```bash
-npm outdated
+bun outdated
 ```
 
 ```bash
-npm update
+bun update
 ```
 
-For an urgent security fix, bypass the window once: `npm install <pkg>@<version> --min-release-age=0`.
+For an urgent security fix, bypass the window once: `bun add <pkg>@<version> --minimum-release-age=0`.
 
-The Docker base image follows the same rule: it is pinned by version and digest (`node:26.13.0-trixie-slim@sha256:…`), so rebuilds are reproducible and never pull an image published minutes ago. Bump both `FROM` lines in the `Dockerfile` when a newer Node release is at least 7 days old.
+The Docker base image follows the same rule: it is pinned by version and digest (`oven/bun:1.4.4-slim@sha256:…`), so rebuilds are reproducible and never pull an image published minutes ago. When a newer Bun release is at least 7 days old, bump the `FROM` line and `packageManager` in `package.json` together.
 
 ## Project structure
 

@@ -4,4 +4,3 @@ seed
 .git
 .env
 *.md
-dist

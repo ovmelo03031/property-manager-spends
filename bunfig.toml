@@ -1,0 +1,4 @@
+[install]
+# Supply-chain cooldown: only install versions published more than 7 days ago (value in seconds).
+# For an urgent security fix, bypass it once with: bun add <pkg>@<version> --minimum-release-age=0
+minimumReleaseAge = 604800

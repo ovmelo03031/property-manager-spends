@@ -1,10 +1,10 @@
 // HTTP API (Hono). The contract is consumed by public/claude-shim.js: keep both in sync.
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { serveStatic } from "@hono/node-server/serve-static";
+import { serveStatic } from "@hono/bun";
 import fs from "node:fs";
 import crypto from "node:crypto";
-import { deepMerge, parsePath, type Store } from "./store.js";
+import { deepMerge, parsePath, type Store } from "./store.ts";
 
 export const MAX_UPLOAD = 20 * 1024 * 1024;
 export const MAX_JSON = 256 * 1024;
@@ -30,6 +30,28 @@ async function readJson(c: Context): Promise<unknown> {
   const first = text.trimStart()[0];
   if (first !== "{" && first !== "[") throw new SyntaxError("JSON body must be an object or array");
   return JSON.parse(text);
+}
+
+/**
+ * Parses a single `bytes=` range (`a-b`, `a-`, `-n`). Returns null when there is no usable range
+ * (missing, multi-range, or malformed — serve the whole file) and "unsatisfiable" for 416.
+ */
+export function parseRange(header: string | undefined, size: number): { start: number; end: number } | "unsatisfiable" | null {
+  const m = header?.match(/^bytes=(\d*)-(\d*)$/);
+  if (!m || (!m[1] && !m[2])) return null;
+  let start: number;
+  let end: number;
+  if (!m[1]) {
+    const suffix = Number(m[2]);
+    if (suffix === 0) return "unsatisfiable";
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number(m[1]);
+    end = m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+  }
+  if (start >= size || start > end) return "unsatisfiable";
+  return { start, end };
 }
 
 export function createApp(store: Store, opts: { publicDir: string }) {
@@ -152,18 +174,31 @@ export function createApp(store: Store, opts: { publicDir: string }) {
     return c.json({ deleted: had });
   });
 
-  app.get("/_blob/:id", async (c, next) => {
+  app.get("/_blob/:id", async c => {
     const id = c.req.param("id");
     const a = ASSET_ID.test(id) ? store.getAsset(id) : undefined;
     if (!a) return c.body(null, 404);
-    // serveStatic handles streaming, Range requests and Content-Length; we override the metadata headers.
-    const res = await serveStatic({ path: store.blobPath(a.id) })(c, next);
-    if (!res) return c.body(null, 404);
-    res.headers.set("Content-Type", a.tipo);
-    res.headers.set("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(a.nombre || a.id)}`);
-    res.headers.set("Cache-Control", "private, max-age=31536000, immutable");
-    res.headers.set("Accept-Ranges", "bytes");
-    return res;
+    const file = Bun.file(store.blobPath(a.id));
+    if (!(await file.exists())) return c.body(null, 404);
+    const headers = new Headers({
+      "Content-Type": a.tipo,
+      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(a.nombre || a.id)}`,
+      "Cache-Control": "private, max-age=31536000, immutable",
+      "Accept-Ranges": "bytes",
+      "Last-Modified": new Date(file.lastModified).toUTCString(),
+    });
+    const range = parseRange(c.req.header("range"), file.size);
+    if (range === "unsatisfiable") {
+      headers.set("Content-Range", `bytes */${file.size}`);
+      return new Response(null, { status: 416, headers });
+    }
+    if (range) {
+      headers.set("Content-Range", `bytes ${range.start}-${range.end}/${file.size}`);
+      headers.set("Content-Length", String(range.end - range.start + 1));
+      return new Response(file.slice(range.start, range.end + 1), { status: 206, headers });
+    }
+    headers.set("Content-Length", String(file.size));
+    return new Response(file, { headers });
   });
 
   // max-age=0 makes browsers revalidate app.js/styles.css, so a redeploy is picked up on reload.

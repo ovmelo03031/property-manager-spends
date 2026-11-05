@@ -1,15 +1,15 @@
-import { after, before, describe, it } from "node:test";
+import { afterAll as after, beforeAll as before, describe, it } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createApp, MAX_UPLOAD } from "../src/app.js";
-import { openStore, type Store } from "../src/store.js";
+import { createApp, MAX_UPLOAD } from "../src/app.ts";
+import { openStore, type Store } from "../src/store.ts";
 
 let tmp: string;
 let store: Store;
 let app: ReturnType<typeof createApp>;
-const publicDir = path.resolve(import.meta.dirname, "..", "public");
+const publicDir = path.resolve(import.meta.dir, "..", "public");
 
 before(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gastos-test-"));
@@ -103,6 +103,17 @@ describe("assets", () => {
     assert.equal(blob.headers.get("content-disposition"), `inline; filename*=UTF-8''${encodeURIComponent("recibo ñ.png")}`);
     assert.equal(blob.headers.get("cache-control"), "private, max-age=31536000, immutable");
     assert.deepEqual(Buffer.from(await blob.arrayBuffer()), png);
+    assert.equal(blob.headers.get("accept-ranges"), "bytes");
+
+    const part = await app.request(meta.url, { headers: { Range: "bytes=1-3" } });
+    assert.equal(part.status, 206);
+    assert.equal(part.headers.get("content-range"), `bytes 1-3/${png.length}`);
+    assert.deepEqual(Buffer.from(await part.arrayBuffer()), png.subarray(1, 4));
+    const tail = await app.request(meta.url, { headers: { Range: "bytes=-2" } });
+    assert.deepEqual(Buffer.from(await tail.arrayBuffer()), png.subarray(-2));
+    const out = await app.request(meta.url, { headers: { Range: "bytes=99-" } });
+    assert.equal(out.status, 416);
+    assert.equal(out.headers.get("content-range"), `bytes */${png.length}`);
 
     assert.deepEqual(await (await app.request("/api/assets/" + meta.id, { method: "DELETE" })).json(), { deleted: true });
     assert.deepEqual(await (await app.request("/api/assets/" + meta.id, { method: "DELETE" })).json(), { deleted: false });

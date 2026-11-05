@@ -5,5 +5,4 @@ seed/
 .DS_Store
 *.log
 backups/
-dist/
 .atl/

@@ -1,24 +1,18 @@
-# ---- build: compiles TypeScript (better-sqlite3 13 ships prebuilt binaries, no toolchain needed) ----
-FROM node:26.13.0-trixie-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS build
-WORKDIR /app
-COPY package.json package-lock.json .npmrc ./
-RUN npm ci
-COPY tsconfig.json tsconfig.build.json ./
-COPY src ./src
-RUN npm run build && npm prune --omit=dev
-
-# ---- final image ----
-FROM node:26.13.0-trixie-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39
+# Bun runs the TypeScript sources directly: no build step, no native modules (SQLite is bun:sqlite).
+# Pinned by version and digest so rebuilds are reproducible and follow the 7-day release-age rule.
+FROM oven/bun:1.4.4-slim@sha256:1846adf22496bd711036aae8be147e57bdebbaea2e5264e3e0b5af1db187d9a4
 ENV NODE_ENV=production PORT=8080 DATA_DIR=/data SEED_DIR=/app/seed
 WORKDIR /app
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY package.json ./
+COPY package.json bun.lock bunfig.toml ./
+RUN bun install --frozen-lockfile --production
+COPY tsconfig.json ./
+COPY src ./src
 COPY public ./public
-RUN mkdir -p /data /app/seed && chown -R node:node /data /app
-USER node
+# The bun user has uid/gid 1000, same as the previous node image, so existing ./data keeps working.
+RUN mkdir -p /data /app/seed && chown -R bun:bun /data /app
+USER bun
 EXPOSE 8080
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
-  CMD node -e "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "dist/server.js"]
+  CMD bun -e "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["bun", "src/server.ts"]
