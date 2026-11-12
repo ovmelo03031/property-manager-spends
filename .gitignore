@@ -6,3 +6,4 @@ seed/
 *.log
 backups/
 .atl/
+.codegraph/
