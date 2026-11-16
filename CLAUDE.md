@@ -64,6 +64,7 @@ Field names are Spanish and are part of the stored format. Do not rename them wi
 - No frontend dependencies and no frontend build step. Keep it that way unless truly needed. Only the backend is TypeScript.
 - Any change to an API route needs a matching test in `test/api.test.ts` and, if the contract changes, an update to `public/claude-shim.js`.
 - Escape all user text with `esc()` before putting it into `innerHTML`.
-- Never commit `data/`, `seed/`, or `.env` (personal data). The repository must stay private.
+- Never commit `data/`, `seed/`, or `.env` (personal data). The repository is public, so never put personal data in code, docs, tests, or commits.
+- `main` is protected by the `protect-main` ruleset: only the owner (admin bypass) can push or merge. Collaborators work on branches and open PRs.
 - Security relies on the network (Tailscale + `BIND_ADDR`). Do not add features that assume public exposure, and do not weaken upload type or size checks.
 - Server-side changes to stored data or document paths are breaking for existing `data/gastos.db`; plan a migration.

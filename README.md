@@ -24,7 +24,7 @@ The user interface is in **Spanish** and all amounts are in **AED**.
 ## Installation
 
 ```bash
-git clone <your-private-repo> gastos-gate-towers
+git clone https://github.com/ovmelo03031/property-manager-spends.git gastos-gate-towers
 cd gastos-gate-towers
 ```
 
@@ -107,7 +107,7 @@ To restore: stop the container, extract the archive into `data/`, rename `gastos
 The app has **no authentication**. Its only protection is that it answers inside your tailnet:
 
 - Set `BIND_ADDR` to the Tailscale IP (or `127.0.0.1` with `tailscale serve`). Never expose it through port forwarding or a public tunnel.
-- Keep the repository **private**. `data/`, `seed/`, and `.env` are git-ignored because they contain personal data (MOU with names and Emirates ID, receipts).
+- The repository is **public**. `data/`, `seed/`, and `.env` are git-ignored because they contain personal data (MOU with names and Emirates ID, receipts); never commit them.
 - Use Tailscale ACLs to limit which tailnet devices can reach it.
 - Uploads are limited to PNG, JPEG, GIF, WebP, and PDF, up to 20 MB each.
 
