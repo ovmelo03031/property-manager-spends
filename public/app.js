@@ -50,13 +50,125 @@ function sums(){
   }
   return t;
 }
-function renderFigs(){
-  const t=sums(); const all=t.compra+t.remodelacion+t.recurrente;
-  $("tCompra").textContent=fmt(t.compra);$("tRemo").textContent=fmt(t.remodelacion);$("tRec").textContent=fmt(t.recurrente);$("tAll").textContent=fmt(all);
-  const n=s=>gastos.filter(g=>(CAT[g.categoria]?.stage||g.etapa)===s&&g.estado!=="pendiente").length;
-  $("tCompraS").textContent=`${n("compra")} movimientos`;$("tRemoS").textContent=`${n("remodelacion")} movimientos`;$("tRecS").textContent=`${n("recurrente")} movimientos`;
-  $("tAllS").textContent = t.pend? `Pendiente: ${fmt(t.pend)}` : (t.sinComp? `${t.sinComp} sin comprobante` : (gastos.length?"Todo con comprobante":" "));
+// ---------- months & bills ----------
+const MONTHS=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const ym=s=>String(s||"").slice(0,7);
+const pad2=n=>String(n).padStart(2,"0");
+function nowYM(){const d=new Date();return d.getFullYear()+"-"+pad2(d.getMonth()+1);}
+function addMonths(key,n){const [y,m]=key.split("-").map(Number);const d=new Date(y,m-1+n,1);return d.getFullYear()+"-"+pad2(d.getMonth()+1);}
+function monthName(key){const [y,m]=key.split("-").map(Number);const s=new Date(y,m-1,1).toLocaleDateString("es",{month:"long",year:"numeric"});return s.charAt(0).toUpperCase()+s.slice(1);}
+const plural=(n,one,many)=>`${n} ${n===1?one:many}`;
+// Bills tracked month by month. monthly=false: never flagged as missing (service charge is not monthly).
+const BILLS=[{k:"addc",monthly:true},{k:"cooling",monthly:true},{k:"internet",monthly:true},{k:"service",monthly:false},{k:"cuota",monthly:true}];
+const BILL_ST={ok:"con recibo",nocomp:"gasto sin recibo",miss:"falta, registrar",na:"aún no"};
+function billRows(year){
+  const cur=nowYM();
+  return BILLS.filter(b=>b.k!=="cuota"||cfg.loan||gastos.some(g=>g.categoria==="cuota")).map(b=>{
+    const gs=gastos.filter(g=>g.categoria===b.k);
+    // "Missing" starts at the first record of each bill (the first cuota for the mortgage), never before.
+    let start=gs.reduce((m,g)=>{const x=ym(g.fecha);return x&&(!m||x<m)?x:m;},"");
+    if(b.k==="cuota"&&cfg.inicio&&(!start||ym(cfg.inicio)<start)) start=ym(cfg.inicio);
+    let total=0;
+    const cells=MONTHS.map((_,i)=>{
+      const key=`${year}-${pad2(i+1)}`; const list=gs.filter(g=>ym(g.fecha)===key);
+      for(const g of list) if(g.estado!=="pendiente") total+=Number(g.monto)||0;
+      let st="na";
+      if(list.length) st=list.every(g=>(g.comprobantes||[]).length)?"ok":"nocomp";
+      else if(b.monthly&&start&&key>=start&&key<cur) st="miss";
+      return {key,i,st,list};
+    });
+    return {k:b.k,label:CAT[b.k].label,cells,total};
+  });
 }
+function missingBills(){
+  const years=gastos.map(g=>Number(ym(g.fecha).slice(0,4))).filter(Boolean);
+  if(cfg.inicio) years.push(Number(cfg.inicio.slice(0,4)));
+  const y1=new Date().getFullYear(); let n=0;
+  for(let y=Math.min(y1,...years);y<=y1;y++) for(const r of billRows(y)) n+=r.cells.filter(c=>c.st==="miss").length;
+  return n;
+}
+function nextCuota(){
+  const a=amort(); if(!a||a.cuota==null||!cfg.inicio||(a.n&&a.k>=a.n)) return null;
+  const [y,m,d]=cfg.inicio.split("-").map(Number); const dt=new Date(y,m-1+a.k,d);
+  return {fecha:`${dt.getFullYear()}-${pad2(dt.getMonth()+1)}-${pad2(dt.getDate())}`,monto:Math.round(a.cuota*100)/100,n:a.k+1,total:a.n};
+}
+
+// ---------- resumen ----------
+function renderRes(){
+  if(!loaded){$("kpis").innerHTML=`<div class="kpi"><span class="muted">Cargando…</span></div>`;return;}
+  const t=sums(), a=amort(), cur=nowYM();
+  const inv=t.compra+t.remodelacion;
+  // Monthly cost: paid recurring expenses (without extra principal payments) over the last 3 months.
+  const last3=[addMonths(cur,-2),addMonths(cur,-1),cur];
+  const recs=gastos.filter(g=>(CAT[g.categoria]?.stage||g.etapa)==="recurrente"&&g.categoria!=="abono"&&g.estado!=="pendiente");
+  const first=recs.reduce((m,g)=>{const x=ym(g.fecha);return x&&(!m||x<m)?x:m;},"");
+  const span=last3.filter(k=>first&&k>=first).length;
+  const mensual=span?recs.filter(g=>last3.includes(ym(g.fecha))).reduce((s,g)=>s+(Number(g.monto)||0),0)/span:null;
+  const saldo=a?(a.cuota!=null?a.saldo:a.P-a.abonos):null; const pctCap=a&&a.cuota!=null?Math.min(100,a.capital/a.P*100):0;
+  const nPend=gastos.filter(g=>g.estado==="pendiente").length;
+  $("kpis").innerHTML=
+    `<div class="kpi main"><span class="eyebrow">Invertido en el apto</span><span class="v">${fmt(inv)}</span><span class="s">Compra, cierre y remodelación pagados</span></div>`+
+    `<div class="kpi"><span class="eyebrow">Costo mensual</span><span class="v">${mensual==null?"—":fmt(Math.round(mensual))}</span><span class="s">${mensual==null?"Aún no hay recurrentes":"Promedio de recurrentes, últimos 3 meses"}</span></div>`+
+    `<div class="kpi"><span class="eyebrow">Saldo hipoteca</span><span class="v">${saldo==null?"—":fmt(saldo)}</span>${a&&a.cuota!=null?`<div class="prog"><i style="width:${pctCap}%"></i></div>`:`<span class="s">${a?"Estimado sin tasa ni plazo":"Sin hipoteca"}</span>`}</div>`+
+    `<div class="kpi"><span class="eyebrow">Por pagar</span><span class="v${t.pend?" warn":""}">${fmt(t.pend)}</span><span class="s">${nPend?plural(nPend,"gasto pendiente","gastos pendientes"):"Nada pendiente"}</span></div>`;
+
+  const att=[]; const miss=missingBills();
+  if(miss) att.push({lvl:"warn",t:plural(miss,"recibo por registrar","recibos por registrar"),s:"Agua y luz, enfriamiento, internet o cuota de meses ya cerrados",act:"rec",b:"Ver recibos"});
+  // Same predicate as the "Sin comprobante" filter it links to, so the count matches the list.
+  const sinComp=gastos.filter(g=>!(g.comprobantes||[]).length).length;
+  if(sinComp) att.push({lvl:"warn",t:plural(sinComp,"gasto sin comprobante","gastos sin comprobante"),s:"Adjunta la foto o el PDF del recibo",act:"sincomp",b:"Revisar"});
+  if(nPend) att.push({lvl:"info",t:plural(nPend,"gasto pendiente de pago","gastos pendientes de pago"),s:fmt(t.pend),act:"pendiente",b:"Ver"});
+  if(docsLoaded){const falta=DOC_TYPES.filter(([k,,clave])=>clave&&!docs.some(d=>d.tipo===k)).map(([,l])=>l);
+    if(falta.length) att.push({lvl:"bad",t:falta.length===1?"Falta un documento clave":`Faltan ${falta.length} documentos clave`,s:falta.join(" · "),act:"docs",b:"Ver archivo"});}
+  $("attN").hidden=!att.length; $("attN").textContent=att.length;
+  $("attList").innerHTML=att.length?att.map(x=>`<div class="att"><span class="dot ${x.lvl}" aria-hidden="true"></span><div class="c"><b>${esc(x.t)}</b><span>${esc(x.s)}</span></div><button type="button" class="btn small" data-act="${x.act}">${esc(x.b)}</button></div>`).join(""):`<div class="empty-s">Todo al día: sin recibos, comprobantes ni documentos por cargar.</div>`;
+
+  const up=gastos.filter(g=>g.estado==="pendiente").sort((x,y)=>(x.fecha||"").localeCompare(y.fecha||"")).slice(0,4).map(g=>({fecha:g.fecha,t:g.concepto||CAT[g.categoria]?.label||"Gasto",s:CAT[g.categoria]?.label||"",m:fmt(g.monto),id:g.id}));
+  const nc=nextCuota(); if(nc) up.push({fecha:nc.fecha,t:"Cuota hipotecaria",s:`Cuota ${nc.n} de ${nc.total} · estimada`,m:fmt(nc.monto),cuota:1});
+  up.sort((x,y)=>(x.fecha||"").localeCompare(y.fecha||""));
+  $("upList").innerHTML=up.length?up.map(u=>{const [,mm,dd]=(u.fecha||"--").split("-");
+    return `<button type="button" class="up" ${u.cuota?'data-cuota="1"':`data-id="${esc(u.id)}"`}><span class="dt"><small>${mm?MONTHS[Number(mm)-1]:"—"}</small><b>${esc(dd||"")}</b></span><span class="c"><b>${esc(u.t)}</b><span>${esc(u.s)}</span></span><span class="num">${u.m}</span></button>`;}).join(""):`<div class="empty-s">Nada pendiente por ahora.</div>`;
+
+  const parts=[["Precio de compra",t.byCat.precio||0,"p1"],["Costos de cierre",t.compra-(t.byCat.precio||0),"p2"],["Remodelación y dotación",t.remodelacion,"p3"],["Recurrentes",t.recurrente,"p4"]];
+  const tot=parts.reduce((s,p)=>s+p[1],0);
+  $("distBar").innerHTML=tot?parts.filter(p=>p[1]>0).map(p=>`<i class="${p[2]}" style="flex:${p[1]}"></i>`).join(""):"";
+  $("distList").innerHTML=tot?parts.map(([l,v,c])=>`<div><span class="sw ${c}" aria-hidden="true"></span><span>${esc(l)}</span><span class="num muted">${Math.round(v/tot*100)}%</span><span class="num">${fmt(v)}</span></div>`).join(""):`<div class="empty-s" style="padding:0">Aún no hay gastos pagados.</div>`;
+
+  const last=[...gastos].sort((x,y)=>(y.fecha||"").localeCompare(x.fecha||"")||(y.creado||0)-(x.creado||0)).slice(0,5);
+  $("lastList").innerHTML=last.length?last.map(rowHTML).join(""):`<div class="empty-s">Aún no hay gastos. ${canWrite?'<button class="btn small primary" type="button" data-act="new">+ Nuevo gasto</button>':""}</div>`;
+}
+function goFilter(f){stageFilter=f;renderChips();renderList();setTab("mov");}
+$("view-res").addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]");
+  if(b){const a=b.dataset.act; if(a==="new")return openForm(); if(a==="rec")return setTab("rec"); if(a==="docs")return setTab("docs"); return goFilter(a);}
+  if(e.target.closest("[data-goto]")) return goFilter("todas");
+  const u=e.target.closest(".up");
+  if(u){ if(u.dataset.cuota){const nc=nextCuota(); if(nc) openForm(null,{categoria:"cuota",etapa:"recurrente",concepto:`Cuota hipotecaria ${nc.n} de ${nc.total}`,monto:nc.monto,fecha:nc.fecha,estado:"pagado"});}
+    else openForm(gastos.find(x=>x.id===u.dataset.id)); return; }
+  const r=e.target.closest(".row"); if(r) openForm(gastos.find(x=>x.id===r.dataset.id));
+});
+$("lastList").onkeydown=e=>{if(e.key==="Enter"){const r=e.target.closest(".row");if(r)openForm(gastos.find(g=>g.id===r.dataset.id));}};
+
+// ---------- recibos ----------
+let recYear=new Date().getFullYear();
+function renderRec(){
+  $("recYear").textContent=recYear; $("recNext").disabled=recYear>=new Date().getFullYear();
+  if(!loaded){$("billList").innerHTML=`<div class="empty-s">Cargando recibos…</div>`;return;}
+  const rows=billRows(recYear);
+  const miss=rows.reduce((s,r)=>s+r.cells.filter(c=>c.st==="miss").length,0);
+  $("recNotice").hidden=!miss; $("recNotice").textContent=miss?`${plural(miss,"recibo por registrar","recibos por registrar")} en ${recYear}. Toca un mes marcado como «Falta» para registrarlo.`:"";
+  $("billList").innerHTML=rows.map(r=>`<section class="bill"><h3>${esc(r.label)}</h3><span class="bt num">${r.total?fmt(r.total):"—"}</span><div class="months">${r.cells.map(c=>
+    `<button type="button" class="cell ${c.st}" data-k="${r.k}" data-key="${c.key}" aria-label="${esc(r.label)}, ${MONTHS[c.i]} ${recYear}: ${BILL_ST[c.st]}">${MONTHS[c.i]}</button>`).join("")}</div></section>`).join("");
+}
+$("recPrev").onclick=()=>{recYear--;renderRec();}; $("recNext").onclick=()=>{recYear++;renderRec();};
+$("billList").onclick=e=>{
+  const c=e.target.closest(".cell"); if(!c)return; const k=c.dataset.k, key=c.dataset.key;
+  // Prefer the month's expense that still lacks a receipt.
+  const g=gastos.filter(x=>x.categoria===k&&ym(x.fecha)===key).sort((x,y)=>((x.comprobantes||[]).length-(y.comprobantes||[]).length))[0];
+  if(g) return openForm(g);
+  openForm(null,{categoria:k,etapa:"recurrente",concepto:`${CAT[k].label} · ${monthName(key)}`,fecha:key+"-01"});
+};
+
 function renderChips(){
   const opts=[["todas","Todas"],...Object.entries(STAGES).map(([k,o])=>[k,o.label]),["pendiente","Pendientes"],["sincomp","Sin comprobante"]];
   $("stageChips").innerHTML=opts.map(([k,l])=>`<button class="chip" data-k="${k}" aria-pressed="${k===stageFilter}">${esc(l)}</button>`).join("");
@@ -75,10 +187,11 @@ function renderList(){
     return true;
   }).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")||(b.creado||0)-(a.creado||0));
   if(!rows.length){L.innerHTML=`<div class="empty"><span class="muted">Ningún gasto coincide con el filtro.</span></div>`;return;}
-  const groups={};for(const g of rows){const st=CAT[g.categoria]?.stage||g.etapa||"compra";(groups[st]=groups[st]||[]).push(g);}
-  L.innerHTML=Object.keys(STAGES).filter(s=>groups[s]).map(s=>{
-    const tot=groups[s].filter(g=>g.estado!=="pendiente").reduce((a,g)=>a+(Number(g.monto)||0),0);
-    return `<div class="group" style="margin-bottom:14px"><h3><span>${esc(STAGES[s].label)}</span><span class="num muted" style="font-size:14px">${fmt(tot)}</span></h3>${groups[s].map(rowHTML).join("")}</div>`;
+  // Grouped by month, newest first (rows are already sorted by date).
+  const groups=new Map();for(const g of rows){const k=ym(g.fecha)||"sin";if(!groups.has(k))groups.set(k,[]);groups.get(k).push(g);}
+  L.innerHTML=[...groups].map(([k,list])=>{
+    const tot=list.filter(g=>g.estado!=="pendiente").reduce((a,g)=>a+(Number(g.monto)||0),0);
+    return `<div class="group" style="margin-bottom:14px"><h3><span>${k==="sin"?"Sin fecha":esc(monthName(k))}</span><span class="num muted" style="font-size:14px">${fmt(tot)}</span></h3>${list.map(rowHTML).join("")}</div>`;
   }).join("");
 }
 function rowHTML(g){
@@ -166,14 +279,29 @@ function renderCasa(){
   $("totEst").textContent=P?fmt(rows.reduce((s,r)=>s+(r[1]||0),0)):"—";
   $("totPag").textContent=fmt(rows.reduce((s,r)=>s+(r[2]||0),0));
 }
-function renderAll(){renderFigs();renderChips();renderList();renderFees();renderParams();renderCasa();renderDocs();renderFotoChips();renderFotos();}
+function renderAll(){renderRes();renderRec();renderChips();renderList();renderFees();renderParams();renderCasa();renderDocs();renderFotoChips();renderFotos();}
 
 // ---------- tabs & filters ----------
-const TABS=["mov","casa","fees","docs","fotos"];
+const TABS=["res","mov","rec","casa","fees","docs","fotos"];
+const MORE_TABS=["casa","fees","docs","fotos"]; // reached from "Más" on mobile
+const isPhone=()=>matchMedia("(max-width:720px)").matches;
 function setTab(which){
   for(const k of TABS){ $("tab-"+k).setAttribute("aria-selected",k===which); const v=$("view-"+k); v.hidden=k!==which; v.style.display=k===which?"flex":""; }
+  for(const b of [...document.querySelectorAll(".bnav [data-tab]"),$("bMore")]){
+    const on=b.id==="bMore"?MORE_TABS.includes(which):b.dataset.tab===which;
+    if(on) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current");
+  }
+  closeMore();
+  if(isPhone()) window.scrollTo(0,0);
 }
 for(const k of TABS) $("tab-"+k).onclick=()=>setTab(k);
+// mobile bottom bar and "Más" sheet
+function openMore(){ $("moreSheet").hidden=false; $("scrim").hidden=false; $("bMore").setAttribute("aria-expanded","true"); $("moreSheet").querySelector("button")?.focus(); }
+function closeMore(){ if($("moreSheet").hidden) return; $("moreSheet").hidden=true; $("bMore").setAttribute("aria-expanded","false"); if($("panel").hidden&&$("dPanel").hidden&&$("fPanel").hidden) $("scrim").hidden=true; }
+document.querySelector(".bnav").onclick=e=>{const b=e.target.closest("[data-tab]"); if(b) setTab(b.dataset.tab);};
+$("bMore").onclick=()=>$("moreSheet").hidden?openMore():closeMore();
+$("fab").onclick=()=>openForm();
+$("moreSheet").onclick=e=>{const b=e.target.closest("[data-tab]"); if(b) return setTab(b.dataset.tab); if(e.target.closest("#btnCsv2")){closeMore();$("btnCsv").click();}};
 $("stageChips").onclick=e=>{const b=e.target.closest(".chip");if(!b)return;stageFilter=b.dataset.k;renderChips();renderList();};
 $("q").oninput=e=>{query=e.target.value;renderList();};
 $("list").onclick=e=>{if(e.target.closest('[data-act="new"]'))return openForm();const r=e.target.closest(".row");if(r)openForm(gastos.find(g=>g.id===r.dataset.id));};
@@ -185,7 +313,7 @@ function feeClick(e){const b=e.target.closest("[data-reg]");if(!b)return;const k
 let paramTimer;
 for(const id of ["pPrecio","pLoan","pArea","pSc","pShare","pBanco","pTasa","pPlazo","pInicio"]) $(id).addEventListener(id==="pShare"||id==="pInicio"?"change":"input",()=>{
   const d={share:$("pShare").value};for(const[id,k]of[...NUMF,...TXTF])d[k]=$(id).value;cfg=cfgFrom(d);
-  renderFees(); renderCasa(); clearTimeout(paramTimer); paramTimer=setTimeout(saveCfg,700);
+  renderFees(); renderCasa(); renderRes(); renderRec(); clearTimeout(paramTimer); paramTimer=setTimeout(saveCfg,700);
 });
 let cfgSaving=false, cfgDirty=false;
 async function saveCfg(){
@@ -223,9 +351,9 @@ function openForm(g, preset){
   renderFiles(); $("scrim").hidden=false; $("panel").hidden=false; setTimeout(()=>$("fConcepto").focus(),50);
 }
 function closeForm(){ for(const f of newFiles) if(f.preview) URL.revokeObjectURL(f.preview); $("panel").hidden=true;$("scrim").hidden=true; editing=null; }
-$("btnClose").onclick=closeForm;$("btnCancel").onclick=closeForm;$("scrim").onclick=()=>{if(!$("fPanel").hidden)closeFoto();else if(!$("dPanel").hidden)closeDoc();else closeForm();};
+$("btnClose").onclick=closeForm;$("btnCancel").onclick=closeForm;$("scrim").onclick=()=>{if(!$("moreSheet").hidden)closeMore();else if(!$("fPanel").hidden)closeFoto();else if(!$("dPanel").hidden)closeDoc();else closeForm();};
 $("btnNew").onclick=()=>openForm();
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("viewer").hidden)closeViewer();else if(!$("fPanel").hidden)closeFoto();else if(!$("dPanel").hidden)closeDoc();else if(!$("panel").hidden)closeForm();}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("viewer").hidden)closeViewer();else if(!$("moreSheet").hidden)closeMore();else if(!$("fPanel").hidden)closeFoto();else if(!$("dPanel").hidden)closeDoc();else if(!$("panel").hidden)closeForm();}});
 
 function renderFiles(){
   const items=[...keptFiles.map((f,i)=>({...f,kind:"kept",i})),...newFiles.map((f,i)=>({...f,kind:"new",i}))];
@@ -533,20 +661,20 @@ renderAll();
 (async()=>{
   const timer=setTimeout(()=>{ if(!loaded) status("Aún no se pueden cargar los datos. Revisa tu conexión; la página seguirá intentando."); },10000);
   try{ db=await claude.use("db"); }catch{ db=null; }
-  if(!db){ clearTimeout(timer); loaded=true; docsLoaded=true; fotosLoaded=true; canWrite=false; $("btnNewFoto").hidden=true; status("No se pudo conectar con el servidor. Revisa que el contenedor esté corriendo."); $("btnNew").hidden=true; renderAll(); return; }
+  if(!db){ clearTimeout(timer); loaded=true; docsLoaded=true; fotosLoaded=true; canWrite=false; $("btnNewFoto").hidden=true; status("No se pudo conectar con el servidor. Revisa que el contenedor esté corriendo."); $("btnNew").hidden=true; $("fab").style.visibility="hidden"; renderAll(); return; }
   const [user, a, d] = await Promise.all([claude.use("user").catch(()=>null), claude.use("assets").catch(()=>null), claude.use("downloads").catch(()=>null)]);
-  assets=a; downloads=d; $("btnCsv").hidden=!downloads;
+  assets=a; downloads=d; $("btnCsv").hidden=!downloads; $("btnCsv2").hidden=!downloads;
   try{ const w=await user?.can?.("data.write"); if(w===false) canWrite=false; }catch{}
-  if(!canWrite){ $("btnNew").hidden=true; for(const id of ["pPrecio","pLoan","pArea","pSc","pShare","pBanco","pTasa","pPlazo","pInicio"]) $(id).disabled=true; }
+  if(!canWrite){ $("btnNew").hidden=true; $("fab").style.visibility="hidden"; for(const id of ["pPrecio","pLoan","pArea","pSc","pShare","pBanco","pTasa","pPlazo","pInicio"]) $(id).disabled=true; }
   db.collection("gastos").onSnapshot(snap=>{
     gastos=snap.docs.map(s=>({id:s.id,...s.data()})); if(!snap.metadata.fromCache){loaded=true;clearTimeout(timer);status("");}
     else if(gastos.length) loaded=true;
-    renderFigs();renderList();renderFees();renderCasa();
-  },err=>{clearTimeout(timer);loaded=true;status(err.code==="revoked"?"Ya no tienes acceso a estos datos.":"No se pudieron cargar los gastos. Recarga la página para intentarlo de nuevo.");renderList();});
+    renderRes();renderRec();renderList();renderFees();renderCasa();
+  },err=>{clearTimeout(timer);loaded=true;status(err.code==="revoked"?"Ya no tienes acceso a estos datos.":"No se pudieron cargar los gastos. Recarga la página para intentarlo de nuevo.");renderList();renderRes();renderRec();});
   if(!canWrite) $("btnNewDoc").hidden=true;
   if(!canWrite||!assets) $("btnNewFoto").hidden=true;
   db.collection("fotos").onSnapshot(s=>{fotos=s.docs.map(x=>({id:x.id,...x.data()}));if(!s.metadata.fromCache||fotos.length)fotosLoaded=true;renderFotos();},()=>{fotosLoaded=true;renderFotos();});
-  db.collection("documentos").onSnapshot(s=>{docs=s.docs.map(x=>({id:x.id,...x.data()}));if(!s.metadata.fromCache||docs.length)docsLoaded=true;renderDocs();},()=>{docsLoaded=true;renderDocs();});
+  db.collection("documentos").onSnapshot(s=>{docs=s.docs.map(x=>({id:x.id,...x.data()}));if(!s.metadata.fromCache||docs.length)docsLoaded=true;renderDocs();renderRes();},()=>{docsLoaded=true;renderDocs();renderRes();});
   db.doc("config/unidad").onSnapshot(s=>{unidad=s.exists?s.data():null;renderFicha();},()=>{});
-  db.doc("config/apto").onSnapshot(s=>{ if(s.exists && !cfgSaving){ cfg=cfgFrom(s.data()); renderParams(); renderFees(); renderCasa(); } },()=>{});
+  db.doc("config/apto").onSnapshot(s=>{ if(s.exists && !cfgSaving){ cfg=cfgFrom(s.data()); renderParams(); renderFees(); renderCasa(); renderRes(); renderRec(); } },()=>{});
 })();

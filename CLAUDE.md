@@ -48,7 +48,8 @@ Field names are Spanish and are part of the stored format. Do not rename them wi
 - `fotos/<id>` (one photo per document): `etapa (original|reforma), reforma (renovation name, groups photos), ambiente, fecha, nota, archivo{id,nombre,tipo,bytes}, creado, actualizado`. Rooms are in `AMBIENTES` in `app.js`.
 - `config/apto`: `precio, loan, area, scRate, share, banco, tasa, plazo, inicio`.
 - `config/unidad`: unit sheet (tower, floor, area, parking, seller, agency…).
-- Reference tables in `app.js`: categories in `STAGES`, MOU closing costs in `FEES`, recurring costs in `RECS`, document types in `DOC_TYPES`.
+- Reference tables in `app.js`: categories in `STAGES`, MOU closing costs in `FEES`, recurring costs in `RECS`, document types in `DOC_TYPES`, bills tracked month by month in `BILLS`.
+- The Resumen and Recibos tabs store nothing: they are derived from `gastos`, `documentos` and `config/apto`. A bill month is "falta" only for closed months since that bill's first record (`cfg.inicio` for the mortgage); bills with `monthly:false` (service charge) are never flagged.
 - Deleting an expense or document deletes its files client-side (best effort); the server does not cascade.
 
 ## Dependencies

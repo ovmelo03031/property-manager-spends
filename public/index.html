@@ -30,22 +30,52 @@
 
   <div id="status" class="notice" hidden></div>
 
-  <section class="figs" aria-label="Totales">
-    <div class="fig"><span class="eyebrow">Compra</span><span class="v" id="tCompra">—</span><span class="s" id="tCompraS">&nbsp;</span></div>
-    <div class="fig"><span class="eyebrow">Remodelación</span><span class="v" id="tRemo">—</span><span class="s" id="tRemoS">&nbsp;</span></div>
-    <div class="fig"><span class="eyebrow">Recurrentes</span><span class="v" id="tRec">—</span><span class="s" id="tRecS">&nbsp;</span></div>
-    <div class="fig total"><span class="eyebrow">Total pagado</span><span class="v" id="tAll">—</span><span class="s" id="tAllS">&nbsp;</span></div>
-  </section>
-
   <nav class="tabs" role="tablist">
-    <button class="tab" role="tab" id="tab-mov" aria-selected="true">Movimientos</button>
+    <button class="tab" role="tab" id="tab-res" aria-selected="true">Resumen</button>
+    <button class="tab" role="tab" id="tab-mov" aria-selected="false">Movimientos</button>
+    <button class="tab" role="tab" id="tab-rec" aria-selected="false">Recibos</button>
     <button class="tab" role="tab" id="tab-casa" aria-selected="false">Vivienda y crédito</button>
     <button class="tab" role="tab" id="tab-fees" aria-selected="false">Costos de compra</button>
     <button class="tab" role="tab" id="tab-docs" aria-selected="false">Documentos</button>
     <button class="tab" role="tab" id="tab-fotos" aria-selected="false">Fotos</button>
   </nav>
 
-  <section id="view-mov" style="display:flex;flex-direction:column;gap:14px">
+  <section id="view-res" style="display:flex;flex-direction:column;gap:18px">
+    <section class="kpis" id="kpis" aria-label="Cifras clave"></section>
+    <div class="cols">
+      <section class="card grow" aria-labelledby="attH">
+        <div class="card-h"><h2 id="attH">Requiere atención</h2><span class="pill warn" id="attN" hidden></span></div>
+        <div id="attList"></div>
+      </section>
+      <section class="card" aria-labelledby="upH">
+        <div class="card-h"><h2 id="upH">Próximos pagos</h2></div>
+        <div id="upList"></div>
+      </section>
+    </div>
+    <div class="cols">
+      <section class="card pad" aria-labelledby="distH">
+        <h2 id="distH">En qué se fue el dinero</h2>
+        <div class="dbar" id="distBar" role="img" aria-label="Reparto del gasto pagado por etapa"></div>
+        <div id="distList" class="dlist"></div>
+      </section>
+      <section class="card grow" aria-labelledby="lastH">
+        <div class="card-h"><h2 id="lastH">Últimos movimientos</h2><button class="btn small" type="button" data-goto="mov">Ver todos</button></div>
+        <div id="lastList"></div>
+      </section>
+    </div>
+  </section>
+
+  <section id="view-rec" hidden style="flex-direction:column;gap:14px">
+    <div class="toolbar" style="justify-content:space-between">
+      <div class="yearsel"><button class="btn small" type="button" id="recPrev" aria-label="Año anterior">‹</button><b class="num" id="recYear"></b><button class="btn small" type="button" id="recNext" aria-label="Año siguiente">›</button></div>
+      <div class="legend"><span><i class="cell ok"></i>Con recibo</span><span><i class="cell nocomp"></i>Sin recibo</span><span><i class="cell miss"></i>Falta</span><span><i class="cell na"></i>Aún no</span></div>
+    </div>
+    <div id="recNotice" class="notice" hidden></div>
+    <div id="billList" class="bills"></div>
+    <p class="src">Cada celda sale de los gastos de esa categoría en ese mes. «Falta» aparece en los meses ya cerrados desde el primer registro de cada servicio; el service charge no se marca como faltante porque no es mensual. Toca una celda para ver el gasto o registrarlo con su recibo.</p>
+  </section>
+
+  <section id="view-mov" hidden style="flex-direction:column;gap:14px">
     <div class="toolbar">
       <input type="search" id="q" placeholder="Buscar concepto, proveedor, nota…" aria-label="Buscar">
       <div class="chips" id="stageChips"></div>
@@ -242,6 +272,20 @@
   <button class="btn vnav" id="vNext" type="button" aria-label="Foto siguiente" hidden>›</button>
   <div class="vcap" id="vCap" hidden></div>
   <div class="bar"><a class="btn" id="vOpen" target="_blank" rel="noopener">Abrir en pestaña nueva</a><button class="btn" id="vClose" type="button">Cerrar</button></div>
+</div>
+<nav class="bnav" aria-label="Secciones">
+  <button type="button" data-tab="res" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Resumen</button>
+  <button type="button" data-tab="mov"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Movimientos</button>
+  <button type="button" class="fab" id="fab" aria-label="Nuevo gasto"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button type="button" data-tab="rec"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>Recibos</button>
+  <button type="button" id="bMore" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>Más</button>
+</nav>
+<div class="sheet" id="moreSheet" hidden role="dialog" aria-label="Más secciones">
+  <button type="button" data-tab="casa">Vivienda y crédito</button>
+  <button type="button" data-tab="fees">Costos de compra</button>
+  <button type="button" data-tab="docs">Documentos</button>
+  <button type="button" data-tab="fotos">Fotos</button>
+  <button type="button" id="btnCsv2" hidden>Exportar a Excel (CSV)</button>
 </div>
 <div class="toast" id="toast" hidden></div>
 <script src="claude-shim.js"></script>
