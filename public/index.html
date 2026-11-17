@@ -42,6 +42,7 @@
     <button class="tab" role="tab" id="tab-casa" aria-selected="false">Vivienda y crédito</button>
     <button class="tab" role="tab" id="tab-fees" aria-selected="false">Costos de compra</button>
     <button class="tab" role="tab" id="tab-docs" aria-selected="false">Documentos</button>
+    <button class="tab" role="tab" id="tab-fotos" aria-selected="false">Fotos</button>
   </nav>
 
   <section id="view-mov" style="display:flex;flex-direction:column;gap:14px">
@@ -108,7 +109,52 @@
     </table></div>
     <p class="src">Los recibos de pagos van con cada gasto en Movimientos; aquí guarda los documentos de la propiedad. Los de identidad (pasaporte, Emirates ID) solo si estás cómodo: quien abra esta página con acceso los verá.</p>
   </section>
+
+  <section id="view-fotos" hidden style="flex-direction:column;gap:14px">
+    <div class="toolbar">
+      <div class="chips" id="fotoChips"></div>
+      <select id="fotoAmb" aria-label="Filtrar por ambiente"></select>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="btnNewFoto">+ Subir fotos</button>
+    </div>
+    <div id="fotoList"></div>
+    <p class="src">Guarda las fotos de cómo recibiste el apartamento y las de cada reforma (antes, durante y después), por ambiente. Las facturas de las obras van como gastos en Remodelación.</p>
+  </section>
 </div>
+
+<aside class="panel" id="fPanel" hidden aria-labelledby="fTitle" role="dialog">
+  <header><h2 id="fTitle">Subir fotos</h2><button class="btn small" type="button" id="fClose">Cerrar</button></header>
+  <form id="fForm" novalidate>
+    <div class="seg" id="segFoto" role="group" aria-label="Etapa"></div>
+    <label class="f" id="fReformaWrap">Reforma<span class="h">agrupa las fotos de una misma obra</span><input id="fReforma" type="text" list="fReformaList" placeholder="Ej. Cocina 2027"><datalist id="fReformaList"></datalist></label>
+    <div class="grid2">
+      <label class="f">Ambiente<select id="fAmb"></select></label>
+      <label class="f">Fecha<input id="fFotoFecha" type="date"></label>
+    </div>
+    <label class="f">Nota<textarea id="fNota" placeholder="Qué se ve, estado, detalle a recordar…"></textarea></label>
+    <div class="f" id="fFotoFilesWrap" style="display:flex;flex-direction:column;gap:8px">
+      <span style="font-size:13px;font-weight:600">Fotos</span>
+      <div class="drop" id="fDrop">
+        <span class="muted" style="font-size:13px">JPG, PNG, WebP o HEIC, hasta 20 MB cada una</span>
+        <label class="btn small" for="fFotoFiles">Elegir fotos</label>
+        <input id="fFotoFiles" type="file" multiple accept="image/*" hidden>
+      </div>
+      <div class="files" id="fFotoList"></div>
+    </div>
+    <div class="files" id="fFotoOne" hidden></div>
+    <div id="fErr" class="notice" hidden></div>
+    <div id="fDelConfirm" class="confirm" hidden>
+      <span>¿Borrar esta foto? No se puede deshacer.</span>
+      <div class="actions"><button type="button" class="btn small danger" id="fDelYes">Sí, borrar</button><button type="button" class="btn small" id="fDelNo">Cancelar</button></div>
+    </div>
+  </form>
+  <footer>
+    <button type="button" class="btn danger" id="fDel" hidden>Borrar</button>
+    <span style="flex:1"></span>
+    <button type="button" class="btn" id="fCancel">Cancelar</button>
+    <button type="submit" form="fForm" class="btn primary" id="fSave">Guardar</button>
+  </footer>
+</aside>
 
 <aside class="panel" id="dPanel" hidden aria-labelledby="dTitle" role="dialog">
   <header><h2 id="dTitle">Agregar documento</h2><button class="btn small" type="button" id="dClose">Cerrar</button></header>
@@ -192,6 +238,9 @@
 
 <div class="viewer" id="viewer" hidden>
   <img id="vImg" alt="Comprobante">
+  <button class="btn vnav" id="vPrev" type="button" aria-label="Foto anterior" hidden>‹</button>
+  <button class="btn vnav" id="vNext" type="button" aria-label="Foto siguiente" hidden>›</button>
+  <div class="vcap" id="vCap" hidden></div>
   <div class="bar"><a class="btn" id="vOpen" target="_blank" rel="noopener">Abrir en pestaña nueva</a><button class="btn" id="vClose" type="button">Cerrar</button></div>
 </div>
 <div class="toast" id="toast" hidden></div>

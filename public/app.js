@@ -165,10 +165,10 @@ function renderCasa(){
   $("totEst").textContent=P?fmt(rows.reduce((s,r)=>s+(r[1]||0),0)):"—";
   $("totPag").textContent=fmt(rows.reduce((s,r)=>s+(r[2]||0),0));
 }
-function renderAll(){renderFigs();renderChips();renderList();renderFees();renderParams();renderCasa();renderDocs();}
+function renderAll(){renderFigs();renderChips();renderList();renderFees();renderParams();renderCasa();renderDocs();renderFotoChips();renderFotos();}
 
 // ---------- tabs & filters ----------
-const TABS=["mov","casa","fees","docs"];
+const TABS=["mov","casa","fees","docs","fotos"];
 function setTab(which){
   for(const k of TABS){ $("tab-"+k).setAttribute("aria-selected",k===which); const v=$("view-"+k); v.hidden=k!==which; v.style.display=k===which?"flex":""; }
 }
@@ -222,9 +222,9 @@ function openForm(g, preset){
   renderFiles(); $("scrim").hidden=false; $("panel").hidden=false; setTimeout(()=>$("fConcepto").focus(),50);
 }
 function closeForm(){ for(const f of newFiles) if(f.preview) URL.revokeObjectURL(f.preview); $("panel").hidden=true;$("scrim").hidden=true; editing=null; }
-$("btnClose").onclick=closeForm;$("btnCancel").onclick=closeForm;$("scrim").onclick=()=>{if(!$("dPanel").hidden)closeDoc();else closeForm();};
+$("btnClose").onclick=closeForm;$("btnCancel").onclick=closeForm;$("scrim").onclick=()=>{if(!$("fPanel").hidden)closeFoto();else if(!$("dPanel").hidden)closeDoc();else closeForm();};
 $("btnNew").onclick=()=>openForm();
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("viewer").hidden)closeViewer();else if(!$("dPanel").hidden)closeDoc();else if(!$("panel").hidden)closeForm();}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("viewer").hidden)closeViewer();else if(!$("fPanel").hidden)closeFoto();else if(!$("dPanel").hidden)closeDoc();else if(!$("panel").hidden)closeForm();}});
 
 function renderFiles(){
   const items=[...keptFiles.map((f,i)=>({...f,kind:"kept",i})),...newFiles.map((f,i)=>({...f,kind:"new",i}))];
@@ -305,12 +305,21 @@ $("btnDelYes").onclick=async()=>{
 };
 
 // ---------- viewer ----------
-function openViewer(src,tipo){
+let vList=null, vIdx=0;
+function showViewer(src,tipo,cap){
   if(!(tipo||"").startsWith("image/")){ $("vImg").hidden=true; } else { $("vImg").hidden=false; $("vImg").src=src; }
-  $("vOpen").href=src; $("viewer").hidden=false;
+  $("vOpen").href=src; $("vCap").textContent=cap||""; $("vCap").hidden=!cap;
+  const nav=!!vList&&vList.length>1; $("vPrev").hidden=!nav; $("vNext").hidden=!nav;
+  $("viewer").hidden=false;
 }
-function closeViewer(){$("viewer").hidden=true;$("vImg").removeAttribute("src");}
+function openViewer(src,tipo){ vList=null; showViewer(src,tipo); }
+// list: [{src,tipo,cap}] — enables previous/next navigation
+function openGallery(list,i){ vList=list; vIdx=i; stepViewer(0); }
+function stepViewer(d){ if(!vList)return; vIdx=(vIdx+d+vList.length)%vList.length; const f=vList[vIdx]; showViewer(f.src,f.tipo,f.cap); }
+function closeViewer(){$("viewer").hidden=true;$("vImg").removeAttribute("src");vList=null;}
 $("vClose").onclick=closeViewer; $("viewer").onclick=e=>{if(e.target.id==="viewer")closeViewer();};
+$("vPrev").onclick=()=>stepViewer(-1); $("vNext").onclick=()=>stepViewer(1);
+document.addEventListener("keydown",e=>{if($("viewer").hidden||!vList)return; if(e.key==="ArrowLeft")stepViewer(-1); else if(e.key==="ArrowRight")stepViewer(1);});
 
 // ---------- CSV ----------
 $("btnCsv").onclick=async()=>{
@@ -401,12 +410,129 @@ $("dDelYes").onclick=async()=>{ if(!dEditing)return; const d=dEditing;
   try{await db.doc("documentos/"+d.id).delete(); for(const a of d.archivos||[]){try{await assets?.delete(a.id);}catch{}} closeDoc(); toast("Documento borrado");}
   catch{$("dErr").textContent="No se pudo borrar.";$("dErr").hidden=false;} };
 
+// ---------- fotos ----------
+// fotos/<id>: etapa (original|reforma), reforma, ambiente, fecha, nota, archivo{id,nombre,tipo,bytes}, creado, actualizado
+const FOTO_ETAPAS=[["original","Original"],["reforma","Reforma"]];
+const AMBIENTES=[["sala","Sala"],["comedor","Comedor"],["cocina","Cocina"],["dorm1","Dormitorio principal"],["dorm2","Dormitorio 2"],["bano1","Baño principal"],["bano2","Baño 2"],["balcon","Balcón"],["lavanderia","Lavandería"],["entrada","Entrada y pasillo"],["vista","Vista"],["edificio","Edificio y áreas comunes"],["otro","Otro"]];
+const AMBL=Object.fromEntries(AMBIENTES), AMBO=Object.fromEntries(AMBIENTES.map(([k],i)=>[k,i]));
+let fotos=[], fotosLoaded=false, fotoFilter="todas", fotoAmb="", fotoView=[];
+const fotoCap=f=>[AMBL[f.ambiente]||"Otro",f.etapa==="reforma"?(f.reforma||"Reforma"):"Original",f.fecha?fmtD(f.fecha):"",f.nota||""].filter(Boolean).join(" · ");
+function renderFotoChips(){
+  const opts=[["todas","Todas"],["original","Original"],["reforma","Reformas"]];
+  $("fotoChips").innerHTML=opts.map(([k,l])=>`<button class="chip" data-k="${k}" aria-pressed="${k===fotoFilter}">${esc(l)}</button>`).join("");
+  $("fotoAmb").innerHTML=`<option value="">Todos los ambientes</option>`+AMBIENTES.map(([k,l])=>`<option value="${k}" ${k===fotoAmb?"selected":""}>${esc(l)}</option>`).join("");
+}
+function renderFotos(){
+  const L=$("fotoList");
+  if(!fotosLoaded){L.innerHTML=`<div class="empty"><span class="muted">Cargando fotos…</span></div>`;return;}
+  if(!fotos.length){L.innerHTML=`<div class="empty"><h2>Aún no hay fotos</h2><span class="muted">Sube cómo recibiste el apartamento, ambiente por ambiente. Cuando hagas una reforma, guarda el antes, el durante y el después con el nombre de la obra.</span>${canWrite&&assets?'<button class="btn primary" data-act="newfoto">+ Subir fotos</button>':''}</div>`;return;}
+  const rows=fotos.filter(f=>(fotoFilter==="todas"||(f.etapa||"original")===fotoFilter)&&(!fotoAmb||f.ambiente===fotoAmb));
+  if(!rows.length){L.innerHTML=`<div class="empty"><span class="muted">Ninguna foto coincide con el filtro.</span></div>`;return;}
+  // Groups: "Original" first, then each reforma, most recent first
+  const groups=new Map();
+  for(const f of rows){const k=f.etapa==="reforma"?"r:"+(f.reforma||"Sin nombre"):"o";if(!groups.has(k))groups.set(k,[]);groups.get(k).push(f);}
+  const last=list=>list.reduce((m,f)=>(f.fecha||"")>m?f.fecha:m,"");
+  const keys=[...groups.keys()].sort((a,b)=>a==="o"?-1:b==="o"?1:last(groups.get(b)).localeCompare(last(groups.get(a))));
+  fotoView=[];
+  L.innerHTML=keys.map(k=>{
+    const list=groups.get(k).sort((a,b)=>(AMBO[a.ambiente]??99)-(AMBO[b.ambiente]??99)||(a.fecha||"").localeCompare(b.fecha||"")||(a.creado||0)-(b.creado||0));
+    const title=k==="o"?"Original":"Reforma · "+k.slice(2);
+    const cards=list.map(f=>{const i=fotoView.push(f)-1;
+      return `<figure class="foto"><button type="button" class="fimg" data-i="${i}" aria-label="Ver ${esc(fotoCap(f))}"><img loading="lazy" src="/_blob/${esc(f.archivo?.id)}" alt=""></button>
+        <figcaption><span><b>${esc(AMBL[f.ambiente]||"Otro")}</b>${f.fecha?`<small>${fmtD(f.fecha)}</small>`:""}</span>${canWrite?`<button type="button" class="btn small" data-editfoto="${esc(f.id)}">Editar</button>`:""}</figcaption></figure>`;}).join("");
+    return `<div class="group" style="margin-bottom:14px"><h3><span>${esc(title)}</span><span class="muted" style="font-size:14px">${list.length} foto${list.length===1?"":"s"}</span></h3><div class="gallery">${cards}</div></div>`;
+  }).join("");
+}
+$("fotoChips").onclick=e=>{const b=e.target.closest(".chip");if(!b)return;fotoFilter=b.dataset.k;renderFotoChips();renderFotos();};
+$("fotoAmb").onchange=e=>{fotoAmb=e.target.value;renderFotos();};
+$("fotoList").onclick=e=>{
+  if(e.target.closest('[data-act="newfoto"]')) return openFoto();
+  const ed=e.target.closest("[data-editfoto]"); if(ed) return openFoto(fotos.find(f=>f.id===ed.dataset.editfoto));
+  const b=e.target.closest(".fimg"); if(b) openGallery(fotoView.map(f=>({src:"/_blob/"+f.archivo?.id,tipo:f.archivo?.tipo||"image/jpeg",cap:fotoCap(f)})),+b.dataset.i);
+};
+$("btnNewFoto").onclick=()=>openFoto();
+let fEditing=null, fEtapa="original", fNew=[], fSaving=false;
+function renderFotoSeg(){
+  $("segFoto").innerHTML=FOTO_ETAPAS.map(([k,l])=>`<button type="button" data-v="${k}" aria-pressed="${k===fEtapa}">${esc(l)}</button>`).join("");
+  $("fReformaWrap").hidden=fEtapa!=="reforma";
+}
+$("segFoto").onclick=e=>{const b=e.target.closest("button");if(!b)return;fEtapa=b.dataset.v;renderFotoSeg();};
+function openFoto(f){
+  if(!canWrite)return; if(!f&&!assets){toast("No se pueden subir fotos en esta vista.");return;}
+  fEditing=f||null; fNew=[];
+  fEtapa=f?.etapa||(fotoFilter==="reforma"?"reforma":"original"); renderFotoSeg();
+  const reformas=[...new Set(fotos.map(x=>x.reforma).filter(Boolean))];
+  $("fReformaList").innerHTML=reformas.map(r=>`<option value="${esc(r)}">`).join("");
+  $("fReforma").value=f?.reforma||"";
+  $("fAmb").innerHTML=AMBIENTES.map(([k,l])=>`<option value="${k}">${esc(l)}</option>`).join("");
+  $("fAmb").value=f?.ambiente||fotoAmb||"sala";
+  $("fFotoFecha").value=f?.fecha||new Date().toISOString().slice(0,10); $("fNota").value=f?.nota||"";
+  $("fTitle").textContent=f?"Editar foto":"Subir fotos";
+  $("fFotoFilesWrap").hidden=!!f; $("fFotoOne").hidden=!f;
+  $("fFotoOne").innerHTML=f?`<div class="file"><div class="thumb"><img src="/_blob/${esc(f.archivo?.id)}" alt=""></div><span class="nm" title="${esc(f.archivo?.nombre)}">${esc(f.archivo?.nombre)}</span></div>`:"";
+  $("fDel").hidden=!f; $("fDelConfirm").hidden=true; $("fErr").hidden=true;
+  renderFotoFiles(); $("scrim").hidden=false; $("fPanel").hidden=false;
+}
+function closeFoto(){ for(const x of fNew) if(x.preview) URL.revokeObjectURL(x.preview); fNew=[]; $("fPanel").hidden=true; $("scrim").hidden=true; fEditing=null; }
+$("fClose").onclick=closeFoto; $("fCancel").onclick=closeFoto;
+function fotoErr(m){$("fErr").textContent=m;$("fErr").hidden=false;}
+function renderFotoFiles(){
+  $("fFotoList").innerHTML=fNew.map((f,i)=>`<div class="file pending"><div class="thumb"><img src="${esc(f.preview)}" alt=""></div><span class="nm" title="${esc(f.nombre)}">${esc(f.nombre)}</span><button type="button" class="x" data-i="${i}" aria-label="Quitar ${esc(f.nombre)}">×</button></div>`).join("");
+}
+$("fFotoList").onclick=e=>{const x=e.target.closest(".x");if(!x)return;const f=fNew.splice(+x.dataset.i,1)[0];if(f?.preview)URL.revokeObjectURL(f.preview);renderFotoFiles();};
+async function addFotoFiles(list){
+  const bad=[];
+  for(const f0 of list){
+    if(/\.pdf$/i.test(f0.name)||f0.type==="application/pdf"){bad.push(f0.name+" (es PDF; guárdalo en Documentos)");continue;}
+    const f=await normalize(f0); if(!f){bad.push(f0.name);continue;} if(f.size>20*1024*1024){bad.push(f0.name+" (más de 20 MB)");continue;}
+    fNew.push({file:f,nombre:f.name,tipo:f.type,preview:URL.createObjectURL(f)});
+  }
+  renderFotoFiles(); if(bad.length) fotoErr("No se pudo adjuntar: "+bad.join(", ")+".");
+}
+$("fFotoFiles").onchange=e=>{addFotoFiles([...e.target.files]);e.target.value="";};
+$("fDrop").addEventListener("dragover",e=>{e.preventDefault();$("fDrop").classList.add("over");});
+$("fDrop").addEventListener("dragleave",()=>$("fDrop").classList.remove("over"));
+$("fDrop").addEventListener("drop",e=>{e.preventDefault();$("fDrop").classList.remove("over");if(assets)addFotoFiles([...e.dataTransfer.files]);});
+$("fForm").onsubmit=async e=>{
+  e.preventDefault(); if(fSaving||!db||!canWrite)return;
+  const reforma=fEtapa==="reforma"?$("fReforma").value.trim():"";
+  if(fEtapa==="reforma"&&!reforma) return fotoErr("Escribe el nombre de la reforma (ej. Cocina 2027).");
+  if(!fEditing&&!fNew.length) return fotoErr("Elige al menos una foto.");
+  const meta={etapa:fEtapa,reforma,ambiente:$("fAmb").value,fecha:$("fFotoFecha").value,nota:$("fNota").value.trim()};
+  fSaving=true; $("fSave").disabled=true; $("fErr").hidden=true;
+  try{
+    if(fEditing){
+      const {id,...prev}=fEditing;
+      await db.doc("fotos/"+id).set({...prev,...meta,actualizado:Date.now()});
+      closeFoto(); toast("Foto actualizada"); return;
+    }
+    const failed=[], total=fNew.length; let ok=0;
+    for(const [n,f] of [...fNew].entries()){
+      $("fSave").textContent=`Subiendo ${n+1} de ${total}…`;
+      try{
+        const r=await uploadOnce(f.file);
+        const now=Date.now();
+        try{ await db.collection("fotos").doc().set({...meta,archivo:{id:r.id,nombre:f.nombre,tipo:r.contentType,bytes:r.sizeBytes},creado:now,actualizado:now}); }
+        catch(err){ try{await assets.delete(r.id);}catch{} throw err; }
+        ok++; URL.revokeObjectURL(f.preview); fNew=fNew.filter(x=>x!==f);
+      }catch(err){ failed.push(f.nombre+" ("+uploadMsg(err)+")"); }
+    }
+    if(failed.length){ renderFotoFiles(); fotoErr(`${ok?`Se guardaron ${ok}, pero no`:"No"} se subieron: ${failed.join(", ")}. Vuelve a intentarlo.`); }
+    else { closeFoto(); toast(ok===1?"Foto guardada":`${ok} fotos guardadas`); }
+  }catch{ fotoErr("No se pudo guardar. Revisa la conexión e inténtalo de nuevo."); }
+  finally{ fSaving=false; $("fSave").disabled=false; $("fSave").textContent="Guardar"; }
+};
+$("fDel").onclick=()=>$("fDelConfirm").hidden=false; $("fDelNo").onclick=()=>$("fDelConfirm").hidden=true;
+$("fDelYes").onclick=async()=>{ if(!fEditing)return; const f=fEditing;
+  try{await db.doc("fotos/"+f.id).delete(); if(f.archivo?.id){try{await assets?.delete(f.archivo.id);}catch{}} closeFoto(); toast("Foto borrada");}
+  catch{fotoErr("No se pudo borrar. Inténtalo de nuevo.");} };
+
 // ---------- boot ----------
 renderAll();
 (async()=>{
   const timer=setTimeout(()=>{ if(!loaded) status("Aún no se pueden cargar los datos. Revisa tu conexión; la página seguirá intentando."); },10000);
   try{ db=await claude.use("db"); }catch{ db=null; }
-  if(!db){ clearTimeout(timer); loaded=true; docsLoaded=true; canWrite=false; status("No se pudo conectar con el servidor. Revisa que el contenedor esté corriendo."); $("btnNew").hidden=true; renderAll(); return; }
+  if(!db){ clearTimeout(timer); loaded=true; docsLoaded=true; fotosLoaded=true; canWrite=false; $("btnNewFoto").hidden=true; status("No se pudo conectar con el servidor. Revisa que el contenedor esté corriendo."); $("btnNew").hidden=true; renderAll(); return; }
   const [user, a, d] = await Promise.all([claude.use("user").catch(()=>null), claude.use("assets").catch(()=>null), claude.use("downloads").catch(()=>null)]);
   assets=a; downloads=d; $("btnCsv").hidden=!downloads;
   try{ const w=await user?.can?.("data.write"); if(w===false) canWrite=false; }catch{}
@@ -417,6 +543,8 @@ renderAll();
     renderFigs();renderList();renderFees();renderCasa();
   },err=>{clearTimeout(timer);loaded=true;status(err.code==="revoked"?"Ya no tienes acceso a estos datos.":"No se pudieron cargar los gastos. Recarga la página para intentarlo de nuevo.");renderList();});
   if(!canWrite) $("btnNewDoc").hidden=true;
+  if(!canWrite||!assets) $("btnNewFoto").hidden=true;
+  db.collection("fotos").onSnapshot(s=>{fotos=s.docs.map(x=>({id:x.id,...x.data()}));if(!s.metadata.fromCache||fotos.length)fotosLoaded=true;renderFotos();},()=>{fotosLoaded=true;renderFotos();});
   db.collection("documentos").onSnapshot(s=>{docs=s.docs.map(x=>({id:x.id,...x.data()}));if(!s.metadata.fromCache||docs.length)docsLoaded=true;renderDocs();},()=>{docsLoaded=true;renderDocs();});
   db.doc("config/unidad").onSnapshot(s=>{unidad=s.exists?s.data():null;renderFicha();},()=>{});
   db.doc("config/apto").onSnapshot(s=>{ if(s.exists && !cfgSaving){ cfg=cfgFrom(s.data()); renderParams(); renderFees(); renderCasa(); } },()=>{});

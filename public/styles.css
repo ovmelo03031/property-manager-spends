@@ -132,3 +132,20 @@ tr.key td{font-weight:600}
 .viewer .bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:80;font-size:14px;max-width:calc(100% - 32px)}
 @media (prefers-reduced-motion:no-preference){.panel{animation:slide .18s ease-out}@keyframes slide{from{transform:translateX(24px);opacity:.6}}}
+/* fotos */
+.tabs{overflow-x:auto;scrollbar-width:none}
+.tab{white-space:nowrap}
+#fotoAmb{width:auto;max-width:100%}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;padding:12px}
+.foto{margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface);display:flex;flex-direction:column}
+.foto .fimg{border:0;padding:0;background:var(--sunk);aspect-ratio:4/3;cursor:zoom-in;display:block;width:100%}
+.foto .fimg img{width:100%;height:100%;object-fit:cover;display:block}
+.foto figcaption{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:6px 8px;font-size:12px;min-width:0}
+.foto figcaption span{display:flex;flex-direction:column;min-width:0}
+.foto figcaption b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.foto figcaption small{color:var(--muted);font-family:var(--f-mono)}
+@media (max-width:480px){.gallery{grid-template-columns:repeat(2,minmax(0,1fr));padding:8px;gap:8px}}
+.viewer .vnav{position:absolute;top:50%;transform:translateY(-50%);font-size:24px;line-height:1;padding:10px 14px}
+#vPrev{left:max(12px,env(safe-area-inset-left,0px))}
+#vNext{right:max(12px,env(safe-area-inset-right,0px))}
+.viewer .vcap{color:#E4ECEC;font-size:13px;text-align:center;max-width:720px}
