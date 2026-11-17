@@ -1,4 +1,4 @@
-# property-manager-spends
+# Property Manager Spends
 
 Personal expense, receipt, and document tracker for **apartment 2810 · The Gate Tower 1 · Al Reem Island, Abu Dhabi**.
 It runs in Docker on a homelab server and is used from a phone or laptop over Tailscale. There is no login: access control is the tailnet.
