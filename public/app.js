@@ -18,7 +18,7 @@ const FEES = [
   {k:"tasacion", est:()=>3000*1.05, note:()=>"AED 2,500–3,500 + IVA", loanOnly:true},
 ];
 const RECS = [
-  {k:"service", est:c=>c.area*(c.scRate||14.5), note:c=>!c.area?"Ingresa el área para estimarlo":(c.scRate?`${c.area} sq ft × AED ${c.scRate} / sq ft / año`:`${c.area} sq ft × AED 14.5 (referencia; pon la tarifa real arriba)`)},
+  {k:"service", est:c=>c.area*(c.scRate||12), note:c=>!c.area?"Ingresa el área para estimarlo":(c.scRate?`${c.area} sq ft × AED ${c.scRate} / sq ft / año`:`${c.area} sq ft × AED 12 (referencia; pon la tarifa real arriba)`)},
   {k:"cooling", est:()=>null, note:()=>"Tasleem: consumo + cargos fijos del enfriamiento central"},
   {k:"addc", est:()=>null, note:()=>"Requiere depósito al abrir la cuenta"},
   {k:"seguro", est:()=>null, note:()=>"Obligatorio si hay hipoteca"},
