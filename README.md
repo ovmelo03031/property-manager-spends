@@ -7,11 +7,15 @@ The user interface is in **Spanish** and all amounts are in **AED**.
 
 ## Features
 
-- **Movimientos (transactions):** purchase, renovation, and recurring expenses, each with photo or PDF receipts.
+- **Resumen (summary):** key figures, a to-do list (missing bills and receipts, pending expenses, missing key documents), upcoming payments, spend by stage, and the latest expenses.
+- **Movimientos (transactions):** purchase, renovation, and recurring expenses grouped by month, each with photo or PDF receipts.
+- **Recibos (bills):** utility, cooling, internet, service charge, and mortgage bills month by month, showing which months are missing or lack a receipt.
 - **Vivienda y crédito (property and mortgage):** purchase price, amount paid to the seller, mortgage installment, principal, interest, estimated balance, and total cost of ownership.
 - **Costos de compra (closing costs):** closing costs from the MOU (ADGM transfer fee, agency commission, Aldar NOC…) and recurring references (service charge, Tasleem cooling).
 - **Documentos (documents):** title deed, floor plan, MOU, NOC, POA, and other unit paperwork.
-- **CSV export** (opens in Excel) from the header button.
+- **Fotos (photos):** the apartment as received and each renovation, by room.
+- **CSV export** (opens in Excel) from the header button, or from "Más" on a phone.
+- On phones, a bottom bar with a new-expense button replaces the tabs.
 - Live updates across open devices via Server-Sent Events.
 - Installable as a home-screen app (PWA manifest), light and dark themes.
 

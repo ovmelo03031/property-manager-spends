@@ -2,7 +2,7 @@
 body{margin:0}
 img{max-width:100%}
 [hidden]{display:none!important}
-/* Layout: libro de cuentas de una sola columna — cifras arriba, luego pestañas Movimientos / Costos de compra; formulario en panel lateral */
+/* Layout: single column — Resumen first, then tabs (bottom bar on phones); forms in side panels */
 :root{
   --bg:#F3F5F4; --surface:#FFFFFF; --sunk:#E8ECEB; --line:#D3DAD8;
   --ink:#14232A; --muted:#5A6B70; --accent:#0E5A66; --accent-ink:#FFFFFF; --accent-soft:#D9EBEC;
@@ -233,3 +233,4 @@ tr.key td{font-weight:600}
   .kpi .v{font-size:17px}
   .kpi.main .v{font-size:24px}
 }
+.card.pad{flex-basis:400px}

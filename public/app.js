@@ -124,7 +124,8 @@ function renderRes(){
   $("attList").innerHTML=att.length?att.map(x=>`<div class="att"><span class="dot ${x.lvl}" aria-hidden="true"></span><div class="c"><b>${esc(x.t)}</b><span>${esc(x.s)}</span></div><button type="button" class="btn small" data-act="${x.act}">${esc(x.b)}</button></div>`).join(""):`<div class="empty-s">Todo al día: sin recibos, comprobantes ni documentos por cargar.</div>`;
 
   const up=gastos.filter(g=>g.estado==="pendiente").sort((x,y)=>(x.fecha||"").localeCompare(y.fecha||"")).slice(0,4).map(g=>({fecha:g.fecha,t:g.concepto||CAT[g.categoria]?.label||"Gasto",s:CAT[g.categoria]?.label||"",m:fmt(g.monto),id:g.id}));
-  const nc=nextCuota(); if(nc) up.push({fecha:nc.fecha,t:"Cuota hipotecaria",s:`Cuota ${nc.n} de ${nc.total} · estimada`,m:fmt(nc.monto),cuota:1});
+  // The estimated next cuota only when no cuota is already registered as pending.
+  const nc=gastos.some(g=>g.categoria==="cuota"&&g.estado==="pendiente")?null:nextCuota(); if(nc) up.push({fecha:nc.fecha,t:"Cuota hipotecaria",s:`Cuota ${nc.n} de ${nc.total} · estimada`,m:fmt(nc.monto),cuota:1});
   up.sort((x,y)=>(x.fecha||"").localeCompare(y.fecha||""));
   $("upList").innerHTML=up.length?up.map(u=>{const [,mm,dd]=(u.fecha||"--").split("-");
     return `<button type="button" class="up" ${u.cuota?'data-cuota="1"':`data-id="${esc(u.id)}"`}><span class="dt"><small>${mm?MONTHS[Number(mm)-1]:"—"}</small><b>${esc(dd||"")}</b></span><span class="c"><b>${esc(u.t)}</b><span>${esc(u.s)}</span></span><span class="num">${u.m}</span></button>`;}).join(""):`<div class="empty-s">Nada pendiente por ahora.</div>`;
