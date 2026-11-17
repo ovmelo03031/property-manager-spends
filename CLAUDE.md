@@ -68,5 +68,6 @@ Field names are Spanish and are part of the stored format. Do not rename them wi
 - Escape all user text with `esc()` before putting it into `innerHTML`.
 - Never commit `data/`, `seed/`, or `.env` (personal data). The repository is public, so never put personal data in code, docs, tests, or commits.
 - `main` is protected by the `protect-main` ruleset: only the owner (admin bypass) can push or merge. Collaborators work on branches and open PRs.
+- `main` can never be deleted: the `main-never-delete` ruleset blocks deletion with no bypass, not even for admins. Do not remove or weaken it.
 - Security relies on the network (Tailscale + `BIND_ADDR`). Do not add features that assume public exposure, and do not weaken upload type or size checks.
 - Server-side changes to stored data or document paths are breaking for existing `data/gastos.db`; plan a migration.
