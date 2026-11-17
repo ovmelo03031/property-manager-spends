@@ -14,7 +14,8 @@ const FEES = [
   {k:"noc", est:()=>3750, note:()=>"MOU (H): dev-admin-fee 2,700 + oa-admin-fee 1,050"},
   {k:"hip_registro", est:c=>c.loan*0.001, note:()=>"MOU (E): 0.1% del préstamo (por confirmar)", loanOnly:true},
   {k:"hip_efee", est:()=>475, note:()=>"MOU (F): mortgage electronic fee", loanOnly:true},
-  {k:"hip_banco", est:c=>c.loan*0.01*1.05, note:()=>"Hasta 1% del préstamo + IVA; varía por banco", loanOnly:true},
+  // na: the cost does not apply to this purchase; shown as "No aplica" and left out of the totals.
+  {k:"hip_banco", est:()=>0, note:()=>"FAB no cobra comisión de procesamiento en esta hipoteca", loanOnly:true, na:true},
   {k:"tasacion", est:()=>3000*1.05, note:()=>"AED 2,500–3,500 + IVA", loanOnly:true},
 ];
 const RECS = [
@@ -94,10 +95,10 @@ function renderFees(){
   const c=cfg, t=sums();
   let est=0, reg=0;
   $("feeBody").innerHTML=FEES.map(f=>{
-    const skip=f.loanOnly&&!c.loan; const e=skip?0:f.est(c); const r=t.byCat[f.k]||0;
+    const skip=f.na||f.loanOnly&&!c.loan; const e=skip?0:f.est(c); const r=t.byCat[f.k]||0;
     if(!skip){est+=e;} reg+=r;
     let pill; if(skip) pill='<span class="pill neutral">No aplica</span>'; else if(!r) pill='<span class="pill warn">Por registrar</span>'; else if(Math.abs(r-e)<=Math.max(50,e*0.02)) pill='<span class="pill ok">Registrado</span>'; else pill=`<span class="pill ${r>e?'bad':'ok'}">${r>e?'Sobre estimado':'Registrado'}</span>`;
-    return `<tr><td>${esc(CAT[f.k].label)}<span class="note">${esc(skip?"Solo con hipoteca":f.note(c))}</span></td><td class="n">${skip||!c.precio&&!f.est({precio:0,loan:0,share:1})?"—":fmt(e)}</td><td class="n">${r?fmt(r):"—"}</td><td>${pill}</td><td>${canWrite&&!skip?`<button class="btn small" data-reg="${f.k}" data-est="${Math.round(e*100)/100}">Registrar</button>`:""}</td></tr>`;
+    return `<tr><td>${esc(CAT[f.k].label)}<span class="note">${esc(skip&&!f.na?"Solo con hipoteca":f.note(c))}</span></td><td class="n">${skip||!c.precio&&!f.est({precio:0,loan:0,share:1})?"—":fmt(e)}</td><td class="n">${r?fmt(r):"—"}</td><td>${pill}</td><td>${canWrite&&!skip?`<button class="btn small" data-reg="${f.k}" data-est="${Math.round(e*100)/100}">Registrar</button>`:""}</td></tr>`;
   }).join("");
   $("feeEst").textContent=c.precio?fmt(est):"—"; $("feeReg").textContent=fmt(reg);
   $("recBody").innerHTML=RECS.map(f=>{const e=f.est(c);const r=t.byCat[f.k]||0;
@@ -109,7 +110,7 @@ function renderParams(){
 }
 function feeTotals(){
   const t=sums(); let est=0, reg=0;
-  for(const f of FEES){ if(f.loanOnly&&!cfg.loan) continue; est+=f.est(cfg); reg+=t.byCat[f.k]||0; }
+  for(const f of FEES){ if(f.na||f.loanOnly&&!cfg.loan) continue; est+=f.est(cfg); reg+=t.byCat[f.k]||0; }
   return {est,reg};
 }
 function amort(){
