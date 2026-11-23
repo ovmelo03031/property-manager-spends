@@ -13,3 +13,8 @@ services:
       - ./seed:/app/seed:ro     # datos iniciales; solo se cargan si la base está vacía
     environment:
       - TZ=Asia/Dubai
+      # Avisos de vencimiento por ntfy (opcional): se activan si defines NTFY_URL y NTFY_TOPIC en .env.
+      - NTFY_URL=${NTFY_URL:-}
+      - NTFY_TOPIC=${NTFY_TOPIC:-}
+      - NTFY_TOKEN=${NTFY_TOKEN:-}
+      - NTFY_CLICK=${NTFY_CLICK:-}
