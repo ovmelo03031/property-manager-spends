@@ -119,7 +119,10 @@ function renderRes(){
   if(sinComp) att.push({lvl:"warn",t:plural(sinComp,"gasto sin comprobante","gastos sin comprobante"),s:"Adjunta la foto o el PDF del recibo",act:"sincomp",b:"Revisar"});
   if(nPend) att.push({lvl:"info",t:plural(nPend,"gasto pendiente de pago","gastos pendientes de pago"),s:fmt(t.pend),act:"pendiente",b:"Ver"});
   if(docsLoaded){const falta=DOC_TYPES.filter(([k,,clave])=>clave&&!docs.some(d=>d.tipo===k)).map(([,l])=>l);
-    if(falta.length) att.push({lvl:"bad",t:falta.length===1?"Falta un documento clave":`Faltan ${falta.length} documentos clave`,s:falta.join(" · "),act:"docs",b:"Ver archivo"});}
+    if(falta.length) att.push({lvl:"bad",t:falta.length===1?"Falta un documento clave":`Faltan ${falta.length} documentos clave`,s:falta.join(" · "),act:"docs",b:"Ver archivo"});
+    // Expired or expiring within 30 days, soonest first.
+    for(const {d,ex} of docs.map(d=>({d,ex:docExpiry(d)})).filter(x=>x.ex?.cls).sort((a,b)=>a.ex.days-b.ex.days))
+      att.push({lvl:ex.cls,t:`${ex.label}: ${d.nombre||DOCL[d.tipo]||"Documento"}`,s:`${ex.days<0?"Venció":"Vence"} el ${fmtD(d.vence)}`,act:"docs",b:"Ver archivo"});}
   $("attN").hidden=!att.length; $("attN").textContent=att.length;
   $("attList").innerHTML=att.length?att.map(x=>`<div class="att"><span class="dot ${x.lvl}" aria-hidden="true"></span><div class="c"><b>${esc(x.t)}</b><span>${esc(x.s)}</span></div><button type="button" class="btn small" data-act="${x.act}">${esc(x.b)}</button></div>`).join(""):`<div class="empty-s">Todo al día: sin recibos, comprobantes ni documentos por cargar.</div>`;
 
@@ -470,6 +473,17 @@ function renderFicha(){
   const u=unidad||{}; const f=[["Unidad",u.unidad||"2810"],["Torre",u.torre||"The Gate Tower 1"],["Piso",u.piso||"28"],["Tipo",u.tipo||"—"],["Área",u.areaM2?`${u.areaM2} m² · ${u.areaSqft} sq ft`:"—"],["Parqueadero",u.parqueo||"—"],["Lote (plot)",u.plot||"—"],["Desarrollador",u.desarrollador||"Aldar"],["Vendedor",u.vendedor||"—"],["Agencia",u.agencia||"—"],["Transferencia",u.transferencia||"—"],["Ocupación",u.ocupacion||"—"]];
   $("ficha").innerHTML=f.map(([k,v])=>`<div><span class="eyebrow">${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
 }
+// Expiry state of a document with `vence` (same stages as the server's ntfy notices).
+const VENCE_PRONTO=30;
+function docExpiry(d){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d.vence||"")) return null;
+  const now=new Date(); const today=Date.UTC(now.getFullYear(),now.getMonth(),now.getDate());
+  const days=Math.round((Date.parse(d.vence+"T00:00:00Z")-today)/86400000);
+  if(days<0) return {days,cls:"bad",label:"Vencido"};
+  if(days===0) return {days,cls:"bad",label:"Vence hoy"};
+  if(days<=VENCE_PRONTO) return {days,cls:days<=7?"bad":"warn",label:`Vence en ${plural(days,"día","días")}`};
+  return {days,cls:null,label:null};
+}
 function renderDocs(){
   renderFicha();
   if(!docsLoaded){$("docBody").innerHTML=`<tr><td colspan="4" class="muted">Cargando documentos…</td></tr>`;return;}
@@ -480,7 +494,9 @@ function renderDocs(){
     if(!list.length){ if(clave||k==="spa") rows.push(`<tr><td>${esc(l)}</td><td class="muted">—</td><td><span class="pill ${clave?"warn":"neutral"}">${clave?"Falta":"Opcional"}</span></td><td>${canWrite?`<button class="btn small" data-newdoc="${k}">Agregar</button>`:""}</td></tr>`); continue; }
     for(const d of list){
       const files=(d.archivos||[]).map((a,i)=>`<button type="button" class="dfile" data-doc="${esc(d.id)}" data-i="${i}" title="${esc(a.nombre)}">${a.tipo==="application/pdf"?"PDF":"IMG"} · ${esc(a.nombre)}</button>`).join("");
-      rows.push(`<tr><td><b>${esc(d.nombre||l)}</b><span class="note">${esc(l)}${d.ref?" · "+esc(d.ref):""}${d.fecha?" · "+fmtD(d.fecha):""}</span>${d.notas?`<span class="note">${esc(d.notas)}</span>`:""}</td><td><div class="dfiles">${files||'<span class="muted">Sin archivo</span>'}</div></td><td><span class="pill ${(d.archivos||[]).length?"ok":"warn"}">${(d.archivos||[]).length?"Guardado":"Sin archivo"}</span></td><td>${canWrite?`<button class="btn small" data-editdoc="${esc(d.id)}">Editar</button>`:""}</td></tr>`);
+      const ex=docExpiry(d);
+      const pill=ex?.cls?`<span class="pill ${ex.cls}">${esc(ex.label)}</span>`:`<span class="pill ${(d.archivos||[]).length?"ok":"warn"}">${(d.archivos||[]).length?"Guardado":"Sin archivo"}</span>`;
+      rows.push(`<tr><td><b>${esc(d.nombre||l)}</b><span class="note">${esc(l)}${d.ref?" · "+esc(d.ref):""}${d.fecha?" · "+fmtD(d.fecha):""}${ex?" · vence "+fmtD(d.vence):""}</span>${d.notas?`<span class="note">${esc(d.notas)}</span>`:""}</td><td><div class="dfiles">${files||'<span class="muted">Sin archivo</span>'}</div></td><td>${pill}</td><td>${canWrite?`<button class="btn small" data-editdoc="${esc(d.id)}">Editar</button>`:""}</td></tr>`);
     }
   }
   $("docBody").innerHTML=rows.join("");
@@ -495,7 +511,7 @@ let dEditing=null,dKept=[],dNew=[],dRemoved=[],dSaving=false;
 function openDoc(d,preset){
   if(!canWrite)return; dEditing=d||null; const v=d||preset||{};
   $("dTipo").innerHTML=DOC_TYPES.map(([k,l])=>`<option value="${k}" ${k===(v.tipo||"otro")?"selected":""}>${esc(l)}</option>`).join("");
-  $("dNombre").value=v.nombre||""; $("dFecha").value=v.fecha||""; $("dRef").value=v.ref||""; $("dNotas").value=v.notas||"";
+  $("dNombre").value=v.nombre||""; $("dFecha").value=v.fecha||""; $("dRef").value=v.ref||""; $("dVence").value=v.vence||""; $("dNotas").value=v.notas||"";
   dKept=[...(d?.archivos||[])]; dNew=[]; dRemoved=[];
   $("dTitle").textContent=d?"Editar documento":"Agregar documento"; $("dDel").hidden=!d; $("dDelConfirm").hidden=true; $("dErr").hidden=true;
   $("dDrop").hidden=!assets; renderDFiles(); $("scrim").hidden=false; $("dPanel").hidden=false;
@@ -526,7 +542,7 @@ $("dForm").onsubmit=async e=>{
   dSaving=true; $("dSave").disabled=true; $("dSave").textContent=dNew.length?"Subiendo…":"Guardando…"; $("dErr").hidden=true;
   const up=[],failed=[];
   for(const f of dNew){try{const r=await uploadOnce(f.file);up.push({id:r.id,nombre:f.nombre,tipo:r.contentType,bytes:r.sizeBytes});}catch(err){failed.push(f.nombre+" ("+uploadMsg(err)+")");}}
-  const doc={tipo,nombre,fecha:$("dFecha").value,ref:$("dRef").value.trim(),notas:$("dNotas").value.trim(),archivos:[...dKept,...up],creado:dEditing?.creado||Date.now(),actualizado:Date.now()};
+  const doc={tipo,nombre,fecha:$("dFecha").value,ref:$("dRef").value.trim(),vence:$("dVence").value,notas:$("dNotas").value.trim(),archivos:[...dKept,...up],creado:dEditing?.creado||Date.now(),actualizado:Date.now()};
   try{
     const ref=dEditing?db.doc("documentos/"+dEditing.id):db.collection("documentos").doc();
     await ref.set(doc); for(const f of dRemoved){try{await assets?.delete(f.id);}catch{}}

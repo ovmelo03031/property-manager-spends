@@ -44,7 +44,8 @@ Run `bun run typecheck && bun test` after backend changes. The frontend has no t
 Field names are Spanish and are part of the stored format. Do not rename them without a migration.
 
 - `gastos/<id>`: `concepto, fecha (YYYY-MM-DD), monto (AED), categoria, etapa (compra|remodelacion|recurrente), estado (pagado|pendiente), moneda, montoOrig, proveedor, metodo, notas, comprobantes[{id,nombre,tipo,bytes}], creado, actualizado`.
-- `documentos/<id>`: `tipo, nombre, fecha, ref, notas, archivos[{id,nombre,tipo,bytes}], creado, actualizado`.
+- `documentos/<id>`: `tipo, nombre, fecha, ref, vence (optional expiry, YYYY-MM-DD), notas, archivos[{id,nombre,tipo,bytes}], creado, actualizado`.
+- `avisos/<docId>.<vence>.<stage>`: written by the server (`src/avisos.ts`) after an ntfy expiry notice is accepted, so each stage (30, 7, 0 days) is sent once. Off unless `NTFY_URL` and `NTFY_TOPIC` are set.
 - `fotos/<id>` (one photo per document): `etapa (original|reforma), reforma (renovation name, groups photos), ambiente, fecha, nota, archivo{id,nombre,tipo,bytes}, creado, actualizado`. Rooms are in `AMBIENTES` in `app.js`.
 - `config/apto`: `precio, loan, area, scRate, share, banco, tasa, plazo, inicio`.
 - `config/unidad`: unit sheet (tower, floor, area, parking, seller, agency…).
