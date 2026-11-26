@@ -3,8 +3,11 @@
 // que usaba la página, para que app.js no cambie.
 (() => {
   const listeners = new Set(); // {key, refetch}
+  // Without a session (expired, closed elsewhere) the server answers 401: go to the login page.
+  const toLogin = () => location.replace("/login.html");
   const api = async (method, url, body) => {
     const r = await fetch(url, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    if (r.status === 401) { toLogin(); throw { code: "unauthenticated", message: "Sesión cerrada" }; }
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw { code: r.status === 400 ? "invalid_argument" : "unavailable", message: e.error || r.statusText }; }
     return r.json();
   };
@@ -20,7 +23,16 @@
   function connect() {
     es = new EventSource("/api/events");
     es.onmessage = e => { try { const m = JSON.parse(e.data); notify(m.path, m.collection); } catch {} };
-    es.onerror = () => { es.close(); setTimeout(() => { connect(); for (const l of listeners) l.refetch(); }, 3000); };
+    // EventSource hides the status code, so ask whether the session is still alive before
+    // reconnecting; otherwise a closed session would retry forever.
+    es.onerror = () => { es.close(); setTimeout(reconnect, 3000); };
+  }
+  async function reconnect() {
+    try {
+      const r = await fetch("/api/sesion");
+      if (r.status === 401) return toLogin();
+    } catch { return void setTimeout(reconnect, 3000); }
+    connect(); for (const l of listeners) l.refetch();
   }
   connect();
 
@@ -72,6 +84,7 @@
   const assetsNs = Object.freeze({
     async upload(blob, opts = {}) {
       const r = await fetch("/api/assets", { method: "POST", headers: { "Content-Type": opts.type || blob.type, "X-Filename": encodeURIComponent(blob.name || "archivo") }, body: blob });
+      if (r.status === 401) { toLogin(); throw { code: "unauthenticated", message: "Sesión cerrada" }; }
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw { code: j.code || (r.status === 413 ? "too_large" : "upstream_error"), message: r.statusText };
       return j;
@@ -83,6 +96,12 @@
   const userNs = Object.freeze({
     isOwner: () => true, canEdit: () => true, can: () => true,
     id: async () => "local", me: async () => ({ id: "local", name: "" }), profiles: async () => ({}),
+    // Not part of the artifact API: ends this session, or every session with `all`.
+    async logout(all = false) {
+      if (es) es.close();
+      await fetch(all ? "/api/logout-all" : "/api/logout", { method: "POST" }).catch(() => {});
+      toLogin();
+    },
   });
 
   const downloadsNs = Object.freeze({

@@ -97,7 +97,7 @@ describe("without a session", () => {
     });
   }
 
-  for (const url of ["/api/health", "/styles.css", "/icon.svg", "/manifest.webmanifest"]) {
+  for (const url of ["/api/health", "/login.html", "/login.js", "/styles.css", "/icon.svg", "/manifest.webmanifest"]) {
     it(`GET ${url} stays public`, async () => {
       const { get } = await setup();
       expect((await get(url)).status).toBe(200);

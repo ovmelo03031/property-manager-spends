@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0E5A66">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gastos 2810">
+<meta name="referrer" content="no-referrer">
+<title>Entrar · Gastos Gate Towers</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+</head>
+<body>
+<main class="login">
+  <header class="meta">
+    <span class="eyebrow">Gate Tower 1 · Unidad 28-10</span>
+    <h1>Gastos del apartamento</h1>
+  </header>
+  <form id="form" class="card pad" novalidate>
+    <h2>Entrar</h2>
+    <!-- Lets password managers store the entry; there is a single user. -->
+    <input type="text" name="username" autocomplete="username" value="gastos" hidden>
+    <label class="f">Contraseña
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+    </label>
+    <label class="f">Código
+      <span class="h">Los 6 dígitos de tu app de autenticación, o un código de respaldo.</span>
+      <input id="codigo" name="codigo" type="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required>
+    </label>
+    <div id="err" class="notice" role="alert" hidden></div>
+    <button class="btn primary" id="go" type="submit">Entrar</button>
+  </form>
+</main>
+<script src="login.js"></script>
+</body>
+</html>

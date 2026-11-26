@@ -234,3 +234,8 @@ tr.key td{font-weight:600}
   .kpi.main .v{font-size:24px}
 }
 .card.pad{flex-basis:400px}
+/* login page */
+.login{max-width:400px;margin:10vh auto 0;display:flex;flex-direction:column;gap:20px}
+.login .meta{display:flex;flex-direction:column;gap:6px}
+.login form.card{flex:none;gap:14px}
+.login .btn.primary{justify-content:center}

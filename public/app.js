@@ -681,6 +681,10 @@ renderAll();
   if(!db){ clearTimeout(timer); loaded=true; docsLoaded=true; fotosLoaded=true; canWrite=false; $("btnNewFoto").hidden=true; status("No se pudo conectar con el servidor. Revisa que el contenedor esté corriendo."); $("btnNew").hidden=true; $("fab").style.visibility="hidden"; renderAll(); return; }
   const [user, a, d] = await Promise.all([claude.use("user").catch(()=>null), claude.use("assets").catch(()=>null), claude.use("downloads").catch(()=>null)]);
   assets=a; downloads=d; $("btnCsv").hidden=!downloads; $("btnCsv2").hidden=!downloads;
+  if(user?.logout){
+    const salir=all=>{ if(all&&!confirm("¿Cerrar la sesión en todos los dispositivos? Tendrás que volver a entrar en cada uno.")) return; user.logout(all); };
+    for(const [id,all] of [["btnLogout",false],["btnLogout2",false],["btnLogoutAll",true],["btnLogoutAll2",true]]){ $(id).hidden=false; $(id).onclick=()=>salir(all); }
+  }
   try{ const w=await user?.can?.("data.write"); if(w===false) canWrite=false; }catch{}
   if(!canWrite){ $("btnNew").hidden=true; $("fab").style.visibility="hidden"; for(const id of ["pPrecio","pLoan","pArea","pSc","pShare","pBanco","pTasa","pPlazo","pInicio"]) $(id).disabled=true; }
   db.collection("gastos").onSnapshot(snap=>{
