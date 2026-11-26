@@ -8,6 +8,8 @@ RUN bun install --frozen-lockfile --production
 COPY tsconfig.json ./
 COPY src ./src
 COPY public ./public
+# Login administration: docker compose exec gastos bun scripts/auth.ts alta
+COPY scripts/auth.ts ./scripts/auth.ts
 # The bun user has uid/gid 1000, same as the previous node image, so existing ./data keeps working.
 RUN mkdir -p /data /app/seed && chown -R bun:bun /data /app
 USER bun
