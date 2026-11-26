@@ -1,10 +1,18 @@
 // HTTP API (Hono). The contract is consumed by public/claude-shim.js: keep both in sync.
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { getCookie } from "hono/cookie";
 import { serveStatic } from "@hono/bun";
 import fs from "node:fs";
 import crypto from "node:crypto";
+import type { Auth } from "./auth.ts";
 import { deepMerge, parsePath, type Store } from "./store.ts";
+
+const COOKIE = "sesion";
+/** Reachable without a session: the login page and what it needs, plus the Docker healthcheck. */
+const PUBLIC = new Set(["/login.html", "/login.js", "/styles.css", "/icon.svg", "/manifest.webmanifest", "/api/login", "/api/health"]);
+// No `Secure`: the app is reached over plain HTTP inside the tailnet (WireGuard encrypts the hop).
+const sessionCookie = (value: string, maxAge: number) => `${COOKIE}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Strict`;
 
 export const MAX_UPLOAD = 20 * 1024 * 1024;
 export const MAX_JSON = 256 * 1024;
@@ -54,20 +62,50 @@ export function parseRange(header: string | undefined, size: number): { start: n
   return { start, end };
 }
 
-export function createApp(store: Store, opts: { publicDir: string }) {
-  const app = new Hono();
+/** Without `auth` every route is open (used by the API tests); the server always passes it. */
+export function createApp(store: Store, opts: { publicDir: string; auth?: Auth }) {
+  const app = new Hono<{ Variables: { sesion?: string } }>();
+  const { auth } = opts;
 
   // ---- live changes (Server-Sent Events) ----
-  const clients = new Set<(chunk: string) => void>();
+  type Client = { send: (chunk: string) => void; sesion?: string; close: () => void };
+  const clients = new Set<Client>();
   const broadcast = (p: string, collection: string) => {
     const msg = `data: ${JSON.stringify({ path: p, collection })}\n\n`;
-    for (const send of clients) send(msg);
+    for (const cl of clients) cl.send(msg);
+  };
+  const closeClients = (match: (cl: Client) => boolean) => {
+    for (const cl of [...clients]) if (match(cl)) cl.close();
   };
 
   app.use(async (c, next) => {
     await next();
     c.res.headers.set("X-Content-Type-Options", "nosniff");
+    c.res.headers.set("Referrer-Policy", "no-referrer");
+    c.res.headers.set("X-Frame-Options", "SAMEORIGIN");
   });
+
+  // ---- access control: runs before every route and static file ----
+  if (auth) {
+    app.use(async (c, next) => {
+      const method = c.req.method;
+      if (method !== "GET" && method !== "HEAD") {
+        const origin = c.req.header("origin");
+        if (origin && origin !== new URL(c.req.url).origin) return c.json({ error: "origen no permitido" }, 403);
+      }
+      if (PUBLIC.has(c.req.path)) return next();
+      const token = getCookie(c, COOKIE);
+      const s = auth.session(token);
+      if (!s) {
+        const p = c.req.path;
+        const api = p.startsWith("/api/") || p.startsWith("/_blob/") || (method !== "GET" && method !== "HEAD");
+        return api ? c.json({ error: "no autenticado" }, 401) : c.redirect("/login.html", 302);
+      }
+      c.set("sesion", s.hash);
+      await next();
+      if (s.refresh) c.res.headers.append("Set-Cookie", sessionCookie(token!, s.refresh));
+    });
+  }
 
   app.onError((err, c) => {
     if (err instanceof PayloadTooLarge) return c.json({ code: "too_large" }, 413);
@@ -79,11 +117,12 @@ export function createApp(store: Store, opts: { publicDir: string }) {
 
   app.get("/api/events", c => {
     const encoder = new TextEncoder();
-    let send: ((chunk: string) => void) | undefined;
+    const sesion = c.get("sesion");
+    let client: Client | undefined;
     let ping: ReturnType<typeof setInterval> | undefined;
     const cleanup = () => {
       clearInterval(ping);
-      if (send) clients.delete(send);
+      if (client) clients.delete(client);
     };
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -94,10 +133,17 @@ export function createApp(store: Store, opts: { publicDir: string }) {
             cleanup();
           }
         };
-        send = write;
+        const close = () => {
+          cleanup();
+          try {
+            controller.close();
+          } catch {}
+        };
+        client = { send: write, sesion, close };
         write(": ok\n\n");
-        clients.add(write);
-        ping = setInterval(() => write(": ping\n\n"), 25_000);
+        clients.add(client);
+        // Each ping also re-checks the session, so expiry or `scripts/auth.ts cerrar-sesiones` ends the stream.
+        ping = setInterval(() => (sesion && auth && !auth.isValid(sesion) ? close() : write(": ping\n\n")), 25_000);
         c.req.raw.signal.addEventListener("abort", cleanup, { once: true });
       },
       cancel: cleanup,
@@ -122,6 +168,39 @@ export function createApp(store: Store, opts: { publicDir: string }) {
   });
 
   const jsonLimit = bodyLimit({ maxSize: MAX_JSON, onError: tooLarge });
+
+  // ---- session ----
+  if (auth) {
+    app.post("/api/login", jsonLimit, async c => {
+      const body = await readJson(c);
+      const b = isPlainObject(body) ? body : {};
+      const r = await auth.login(b.password, b.codigo);
+      if (r.kind === "locked") {
+        c.header("Retry-After", String(r.retryAfter));
+        return c.json({ error: "demasiados intentos" }, 429);
+      }
+      if (r.kind === "fail") return c.json({ error: "credenciales inválidas" }, 401);
+      c.header("Set-Cookie", sessionCookie(r.token, r.maxAge));
+      return c.json({ ok: true });
+    });
+
+    app.get("/api/sesion", c => c.json({ ok: true }));
+
+    app.post("/api/logout", c => {
+      const hash = c.get("sesion")!;
+      auth.logout(hash);
+      closeClients(cl => cl.sesion === hash);
+      c.header("Set-Cookie", sessionCookie("", 0));
+      return c.json({ ok: true });
+    });
+
+    app.post("/api/logout-all", c => {
+      auth.logoutAll();
+      closeClients(() => true);
+      c.header("Set-Cookie", sessionCookie("", 0));
+      return c.json({ ok: true });
+    });
+  }
 
   app.put("/api/doc", jsonLimit, async c => {
     const body = await readJson(c);
@@ -183,10 +262,14 @@ export function createApp(store: Store, opts: { publicDir: string }) {
     const headers = new Headers({
       "Content-Type": a.tipo,
       "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(a.nombre || a.id)}`,
-      "Cache-Control": "private, max-age=31536000, immutable",
+      // Revalidate every time, so a cached file is never shown without a session. The id never
+      // points at other bytes, so the id itself is the ETag.
+      "Cache-Control": "private, no-cache",
+      ETag: `"${a.id}"`,
       "Accept-Ranges": "bytes",
       "Last-Modified": new Date(file.lastModified).toUTCString(),
     });
+    if (c.req.header("if-none-match") === `"${a.id}"`) return new Response(null, { status: 304, headers });
     const range = parseRange(c.req.header("range"), file.size);
     if (range === "unsatisfiable") {
       headers.set("Content-Range", `bytes */${file.size}`);

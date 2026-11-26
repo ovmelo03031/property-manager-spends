@@ -56,6 +56,13 @@ export function openStore(dataDir: string) {
     CREATE INDEX IF NOT EXISTS docs_collection ON docs(collection);
     CREATE TABLE IF NOT EXISTS assets (
       id TEXT PRIMARY KEY, nombre TEXT, tipo TEXT NOT NULL, bytes INTEGER NOT NULL, created_at INTEGER NOT NULL);
+    -- Auth lives outside docs so the document API can never read it. Single user (id = 1).
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id INTEGER PRIMARY KEY CHECK (id = 1), pass_hash TEXT NOT NULL, totp_secret TEXT NOT NULL,
+      totp_ultimo INTEGER NOT NULL DEFAULT 0, respaldo TEXT NOT NULL DEFAULT '[]',
+      fallos INTEGER NOT NULL DEFAULT 0, bloqueado_hasta INTEGER NOT NULL DEFAULT 0, creado INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS sesiones (
+      token_hash TEXT PRIMARY KEY, creado INTEGER NOT NULL, visto INTEGER NOT NULL, expira INTEGER NOT NULL);
   `);
 
   type Row = { id: string; data: string };

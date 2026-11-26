@@ -1,6 +1,7 @@
 // Gastos Gate Towers — homelab server entrypoint (Hono on Bun + bun:sqlite).
 import path from "node:path";
 import { createApp } from "./app.ts";
+import { createAuth } from "./auth.ts";
 import { ntfyFromEnv, startAvisos } from "./avisos.ts";
 import { openStore, seed } from "./store.ts";
 
@@ -12,7 +13,9 @@ const SEED_DIR = path.resolve(process.env.SEED_DIR || path.join(ROOT, "seed"));
 
 const store = openStore(DATA_DIR);
 seed(store, SEED_DIR);
-const app = createApp(store, { publicDir: path.join(ROOT, "public") });
+const auth = createAuth(store);
+const app = createApp(store, { publicDir: path.join(ROOT, "public"), auth });
+if (!auth.hasUser()) console.warn("Sin usuario: nadie puede entrar. Créalo con `bun scripts/auth.ts alta`.");
 
 const server = Bun.serve({
   fetch: app.fetch,
