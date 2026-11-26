@@ -303,6 +303,33 @@ describe("sessions", () => {
     expect(ok.status).toBe(200);
   });
 
+  it("compares Origin with Host, so an HTTPS proxy in front (tailscale serve) still works", async () => {
+    const { app, signIn } = await setup();
+    const cookie = await signIn();
+    const put = (origin: string, extra: Record<string, string> = {}) =>
+      app.request("http://127.0.0.1:8080/api/doc?path=gastos/a", {
+        method: "PUT",
+        headers: { cookie, Origin: origin, "Content-Type": "application/json", ...extra },
+        body: JSON.stringify({ monto: 1 }),
+      });
+    expect((await put("https://app.ts.net", { Host: "app.ts.net" })).status).toBe(200);
+    expect((await put("https://app.ts.net", { Host: "127.0.0.1:8080", "X-Forwarded-Host": "app.ts.net" })).status).toBe(200);
+    expect((await put("http://evil.test", { Host: "app.ts.net" })).status).toBe(403);
+    expect((await put("null", { Host: "app.ts.net" })).status).toBe(403);
+    expect((await put("not a url", { Host: "app.ts.net" })).status).toBe(403);
+  });
+
+  it("does not hand the old token back on logout when a refresh was due", async () => {
+    const { app, signIn, clock } = await setup();
+    for (const route of ["/api/logout", "/api/logout-all"]) {
+      const cookie = await signIn();
+      clock.now += 2 * 3_600_000; // past the refresh interval
+      const r = await app.request(route, { method: "POST", headers: { cookie } });
+      expect(r.status).toBe(200);
+      expect(r.headers.getSetCookie()).toEqual(["sesion=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict"]);
+    }
+  });
+
   it("closes the event stream on logout", async () => {
     const { app, signIn } = await setup();
     const cookie = await signIn();
