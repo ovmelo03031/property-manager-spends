@@ -84,12 +84,12 @@ The app is then available at `https://<server>.<your-tailnet>.ts.net`. In this s
 | `PORT` | container | `8080` | Port the server listens on. |
 | `DATA_DIR` | container | `./data` (`/data` in Docker) | SQLite database and uploaded files. |
 | `SEED_DIR` | container | `./seed` (`/app/seed` in Docker) | Initial data, loaded only into an empty database. |
-| `NTFY_URL` | `.env` (compose) | — | ntfy server root (e.g. `https://ntfy.sh` or your own). With `NTFY_TOPIC`, turns on expiry notifications. |
-| `NTFY_TOPIC` | `.env` (compose) | — | ntfy topic to publish to. Pick a long random name: on a public server anyone who knows it can read it. |
+| `NTFY_URL` | `.env` (compose) | — | Root of your own ntfy server on the tailnet (e.g. `http://raspberrypi:8090`). With `NTFY_TOPIC`, turns on expiry notifications. Never point it at a public server such as ntfy.sh: nothing may leave your network. |
+| `NTFY_TOPIC` | `.env` (compose) | — | ntfy topic to publish to on that server. |
 | `NTFY_TOKEN` | `.env` (compose) | — | Optional access token for a protected topic. |
 | `NTFY_CLICK` | `.env` (compose) | — | Optional URL opened when you tap a notification (e.g. the app's tailnet address). |
 
-Expiry notifications: documents with a "Vence" date send a push 30 and 7 days before, on the day, and once after they expire. Each step is sent once (recorded in the `avisos` collection) and the server checks every 6 hours. The notification carries the document's name and date, so use your own ntfy server or a hard-to-guess topic.
+Expiry notifications: documents with a "Vence" date send a push 30 and 7 days before, on the day, and once after they expire. Each step is sent once (recorded in the `avisos` collection) and the server checks every 6 hours. The notification carries the document's name and date, so it must go to a self-hosted ntfy reachable only over Tailscale.
 
 > The compose default `0.0.0.0` exposes the app to your whole LAN. Always set `BIND_ADDR`.
 

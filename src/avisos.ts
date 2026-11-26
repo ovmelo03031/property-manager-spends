@@ -66,7 +66,7 @@ export function messageFor(a: Due): { title: string; message: string; priority: 
 }
 
 export interface NtfyConfig {
-  url: string; // server root, e.g. https://ntfy.sh
+  url: string; // self-hosted ntfy root on the tailnet; never a public server
   topic: string;
   token?: string;
   click?: string; // opened when the notification is tapped
