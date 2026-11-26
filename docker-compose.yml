@@ -4,17 +4,35 @@ services:
     image: gastos-gate-towers:latest
     container_name: gastos-gate-towers
     restart: unless-stopped
-    ports:
-      # Escucha solo en la IP de Tailscale del host (o 127.0.0.1 con tailscale serve), definida en .env.
-      # Es obligatoria: sin ella el puerto quedaría abierto a toda la LAN, con la contraseña viajando en claro.
-      - "${BIND_ADDR:?Define BIND_ADDR en .env con la IP de Tailscale del host}:${HOST_PORT:-8080}:8080"
+    # No published port: the app is reached only through Caddy (HTTPS) on the compose network.
     volumes:
       - ./data:/data            # base de datos y archivos (haz respaldo de esta carpeta)
       - ./seed:/app/seed:ro     # datos iniciales; solo se cargan si la base está vacía
     environment:
       - TZ=Asia/Dubai
+      - COOKIE_SECURE=1         # la cookie de sesión solo viaja por HTTPS
       # Avisos de vencimiento por ntfy (opcional): se activan si defines NTFY_URL y NTFY_TOPIC en .env.
       - NTFY_URL=${NTFY_URL:-}
       - NTFY_TOPIC=${NTFY_TOPIC:-}
       - NTFY_TOKEN=${NTFY_TOKEN:-}
       - NTFY_CLICK=${NTFY_CLICK:-}
+
+  caddy:
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    container_name: gastos-caddy
+    restart: unless-stopped
+    depends_on:
+      - gastos
+    ports:
+      # Escucha solo en la IP de Tailscale del host, definida en .env. Es obligatoria.
+      # 8443: HTTPS. 8080: redirige a HTTPS (los enlaces viejos siguen funcionando).
+      - "${BIND_ADDR:?Define BIND_ADDR en .env con la IP de Tailscale del host}:8443:8443"
+      - "${BIND_ADDR:?Define BIND_ADDR en .env con la IP de Tailscale del host}:8080:8080"
+    environment:
+      # Nombres e IPs que van en el certificado. Por defecto, solo la IP de Tailscale.
+      - SITE_ADDRESSES=${SITE_ADDRESSES:-${BIND_ADDR}}
+      - BIND_ADDR=${BIND_ADDR}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/data:/data      # incluye la CA raíz y su clave privada: no la compartas ni la subas a git
+      - ./caddy/config:/config

@@ -1,0 +1,33 @@
+# HTTPS in front of the app with Caddy's own certificate authority (`tls internal`).
+# No public CA and no Certificate Transparency log: nothing leaves the network.
+# Each device must trust Caddy's root certificate once (see README, "HTTPS").
+{
+	# Pi-hole on the host already uses 80/443, so Caddy listens on 8080 (redirects to HTTPS) and 8443.
+	# Host and container ports must match.
+	http_port 8080
+	https_port 8443
+	# Never ACME, even if a future site block forgets `tls internal`.
+	local_certs
+	# The automatic redirect drops the 8443 port; the explicit one below keeps it.
+	auto_https disable_redirects
+	# Only TCP is published, so don't advertise HTTP/3 over UDP.
+	servers {
+		protocols h1 h2
+	}
+	# Browsers send no SNI when the address is an IP: answer with the certificate for BIND_ADDR.
+	default_sni {$BIND_ADDR}
+	# The container cannot (and should not) add the root to its own trust store.
+	skip_install_trust
+	admin off
+}
+
+http://:8080 {
+	redir https://{host}:8443{uri} temporary
+}
+
+# SITE_ADDRESSES: comma-separated names and IPs the devices use, e.g.
+# "100.x.y.z, my-server, my-server.my-tailnet.ts.net". Each one goes into the certificate.
+{$SITE_ADDRESSES} {
+	tls internal
+	reverse_proxy gastos:8080
+}

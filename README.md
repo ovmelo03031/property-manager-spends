@@ -64,12 +64,14 @@ docker compose exec gastos bun scripts/auth.ts alta
 
 It asks for a password (at least 12 characters) and prints, once, a TOTP secret and 8 backup codes. Add the secret to an authenticator app (manual key, time-based) and keep the backup codes somewhere other than this server.
 
-Open it from any device on your tailnet and sign in with the password and the 6-digit code:
+Trust Caddy's root certificate on each device once (see [HTTPS](#https) below), then open the app from any device on your tailnet and sign in with the password and the 6-digit code:
 
 ```
-http://<server-name>:8080     # with MagicDNS
-http://100.x.y.z:8080         # with the Tailscale IP
+https://100.x.y.z:8443        # with the Tailscale IP
+https://<server-name>:8443    # with MagicDNS, if listed in SITE_ADDRESSES
 ```
+
+`http://…:8080` redirects to HTTPS, so old links keep working.
 
 On a phone, use "Add to Home Screen" to open it as an app.
 
@@ -95,25 +97,44 @@ docker compose exec gastos bun scripts/auth.ts cerrar-sesiones
 
 Ends every session, for example after losing a device. Open tabs return to the login within 30 seconds.
 
-### HTTPS (optional)
+### HTTPS
 
-With Tailscale on the host you can serve the app with a valid certificate inside your tailnet:
+Compose runs [Caddy](https://caddyserver.com) in front of the app with its own certificate authority (`tls internal`). Nothing is requested from a public CA, so no name ends up in a Certificate Transparency log. The app container publishes no port: only Caddy is reachable, on `BIND_ADDR` port 8443 (HTTPS) and 8080 (redirect to HTTPS). Ports 80 and 443 are left alone because other services on the host (Pi-hole) may use them.
 
-```bash
-tailscale serve --bg 8080
+By default the certificate covers only the Tailscale IP. To also use names, set `SITE_ADDRESSES` in `.env` (comma-separated, every address devices will type):
+
+```
+SITE_ADDRESSES=100.x.y.z, my-server, my-server.my-tailnet.ts.net
 ```
 
-The app is then available at `https://<server>.<your-tailnet>.ts.net`. In this setup, set `BIND_ADDR=127.0.0.1` in `.env`, since Tailscale forwards traffic from localhost.
+Caddy creates its root certificate on first start. The folder is readable only by root, so take the certificate out through the container, on the server:
 
-> Enabling Tailscale HTTPS publishes the machine name and the tailnet DNS name in a public Certificate Transparency ledger, and issued certificates cannot be revoked ([Tailscale docs](https://tailscale.com/kb/1153/enabling-https)). Plain HTTP inside the tailnet is the default for that reason; WireGuard already encrypts the traffic.
+```bash
+docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt gastos-ca.crt
+```
+
+Then copy `gastos-ca.crt` to your computer. Copy only `root.crt`, never `root.key`.
+
+Trust it once on each device:
+
+- **iPhone/iPad:** send `gastos-ca.crt` to the device (AirDrop or Files) and open it. Install the profile in Settings → General → VPN & Device Management, then turn it on in Settings → General → About → Certificate Trust Settings.
+- **Android:** Settings → Security (or Security & privacy → More security settings) → Encryption & credentials → Install a certificate → CA certificate. The path varies by vendor.
+- **macOS:** open it in Keychain Access, add it to the System keychain, and set "When using this certificate" to "Always Trust".
+- **Windows:** open it → Install Certificate → Local Machine → Trusted Root Certification Authorities.
+- **Firefox** (any OS where it does not use the system store, e.g. Linux): Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.
+
+The root lasts 10 years; Caddy renews the server certificates on its own. `caddy/` holds the root's private key: anyone with it can impersonate the app to your devices. It is git-ignored; keep it out of shared places. If you delete it, Caddy makes a new root and every device must trust it again.
+
+> Why not `tailscale serve`? Tailscale HTTPS publishes the machine name and the tailnet DNS name in a public Certificate Transparency ledger, and its certificates cannot be revoked ([Tailscale docs](https://tailscale.com/kb/1153/enabling-https)).
 
 ## Configuration
 
 | Variable | Where | Default | Purpose |
 |---|---|---|---|
-| `BIND_ADDR` | `.env` (compose) | required | Host interface the port binds to: the Tailscale IP, or `127.0.0.1` with `tailscale serve`. Compose refuses to start without it. |
-| `HOST_PORT` | `.env` (compose) | `8080` | Host port. |
+| `BIND_ADDR` | `.env` (compose) | required | Host interface Caddy binds to (ports 8443 and 8080): the server's Tailscale IP. Compose refuses to start without it. |
+| `SITE_ADDRESSES` | `.env` (compose) | `BIND_ADDR` | Comma-separated names and IPs the HTTPS certificate covers. |
 | `PORT` | container | `8080` | Port the server listens on. |
+| `COOKIE_SECURE` | container | — | `1` adds `Secure` to the session cookie. Compose sets it, since the app is only reached through Caddy. Leave it unset for plain-HTTP local development. |
 | `DATA_DIR` | container | `./data` (`/data` in Docker) | SQLite database and uploaded files. |
 | `SEED_DIR` | container | `./seed` (`/app/seed` in Docker) | Initial data, loaded only into an empty database. |
 | `NTFY_URL` | `.env` (compose) | — | Root of your own ntfy server on the tailnet (e.g. `http://raspberrypi:8090`). With `NTFY_TOPIC`, turns on expiry notifications. Never point it at a public server such as ntfy.sh: nothing may leave your network. |
@@ -147,9 +168,10 @@ To restore: stop the container, extract the archive into `data/`, rename `gastos
 Two layers protect the app: it answers only inside your tailnet, and every route needs a session.
 
 - **Login:** one user, password hashed with argon2id plus a TOTP code (or a single-use backup code). A TOTP code works once.
-- **Sessions:** a random token in an `HttpOnly`, `SameSite=Strict` cookie; the database stores only its SHA-256. The cookie has no `Secure` flag because the app is reached over plain HTTP inside the tailnet.
+- **Sessions:** a random token in an `HttpOnly`, `SameSite=Strict` cookie; the database stores only its SHA-256. In Docker the cookie is also `Secure`, since the app is served only over HTTPS.
+- **HTTPS:** Caddy with its own certificate authority, so traffic is encrypted end to end on top of WireGuard and no name is published anywhere.
 - **Other checks:** writes from another origin are rejected, failed logins lock the form for a growing wait, and files are revalidated on every view so the browser cache never shows them without a session.
-- The login is an extra layer, not permission to expose the app. Set `BIND_ADDR` to the Tailscale IP (or `127.0.0.1` with `tailscale serve`). Never expose it through port forwarding or a public tunnel.
+- The login is an extra layer, not permission to expose the app. Set `BIND_ADDR` to the Tailscale IP. Never expose it through port forwarding or a public tunnel.
 - `data/` and backups are **not encrypted**. They hold the data, the password hash, and the TOTP secret, so anyone with a copy needs only the password. Keep backups somewhere private.
 - The repository is **public**. `data/`, `seed/`, and `.env` are git-ignored because they contain personal data (MOU with names and Emirates ID, receipts); never commit them.
 - Use Tailscale ACLs to limit which tailnet devices can reach it.
@@ -210,6 +232,7 @@ public/manifest.webmanifest, icon.svg   PWA metadata
 seed-example/           Format of the (git-ignored) seed/ folder
 scripts/backup.sh       Backup of data/
 scripts/auth.ts         Login administration: alta, desbloquear, cerrar-sesiones
+Caddyfile               HTTPS reverse proxy with Caddy's internal CA
 ```
 
 ## API overview

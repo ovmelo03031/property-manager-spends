@@ -10,11 +10,13 @@ const ROOT = path.resolve(import.meta.dir, "..");
 const PORT = Number(process.env.PORT || 8080);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(ROOT, "data"));
 const SEED_DIR = path.resolve(process.env.SEED_DIR || path.join(ROOT, "seed"));
+// Set when the app is only reached through HTTPS (Caddy in docker-compose): the session cookie gets `Secure`.
+const COOKIE_SECURE = process.env.COOKIE_SECURE === "1";
 
 const store = openStore(DATA_DIR);
 seed(store, SEED_DIR);
 const auth = createAuth(store);
-const app = createApp(store, { publicDir: path.join(ROOT, "public"), auth });
+const app = createApp(store, { publicDir: path.join(ROOT, "public"), auth, secureCookie: COOKIE_SECURE });
 if (!auth.hasUser()) console.warn("Sin usuario: nadie puede entrar. Créalo con `bun scripts/auth.ts alta`.");
 
 const server = Bun.serve({

@@ -11,8 +11,9 @@ import { deepMerge, parsePath, type Store } from "./store.ts";
 const COOKIE = "sesion";
 /** Reachable without a session: the login page and what it needs, plus the Docker healthcheck. */
 const PUBLIC = new Set(["/login.html", "/login.js", "/styles.css", "/icon.svg", "/manifest.webmanifest", "/api/login", "/api/health"]);
-// No `Secure`: the app is reached over plain HTTP inside the tailnet (WireGuard encrypts the hop).
-const sessionCookie = (value: string, maxAge: number) => `${COOKIE}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Strict`;
+// `Secure` only when the app is served over HTTPS (behind Caddy); on plain HTTP the browser would drop the cookie.
+const sessionCookieWith = (secure: boolean) => (value: string, maxAge: number) =>
+  `${COOKIE}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Strict${secure ? "; Secure" : ""}`;
 
 export const MAX_UPLOAD = 20 * 1024 * 1024;
 export const MAX_JSON = 256 * 1024;
@@ -63,7 +64,8 @@ export function parseRange(header: string | undefined, size: number): { start: n
 }
 
 /** Without `auth` every route is open (used by the API tests); the server always passes it. */
-export function createApp(store: Store, opts: { publicDir: string; auth?: Auth }) {
+export function createApp(store: Store, opts: { publicDir: string; auth?: Auth; secureCookie?: boolean }) {
+  const sessionCookie = sessionCookieWith(!!opts.secureCookie);
   const app = new Hono<{ Variables: { sesion?: string } }>();
   const { auth } = opts;
 
@@ -90,7 +92,7 @@ export function createApp(store: Store, opts: { publicDir: string; auth?: Auth }
     app.use(async (c, next) => {
       const method = c.req.method;
       if (method !== "GET" && method !== "HEAD") {
-        // Compare hosts, not schemes: behind `tailscale serve` the browser is on https:// while this
+        // Compare hosts, not schemes: behind Caddy the browser is on https:// while this
         // server sees http://. Browsers can't forge Host or X-Forwarded-Host cross-site without a
         // CORS preflight, which this server never grants.
         const origin = c.req.header("origin");

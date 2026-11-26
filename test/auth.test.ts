@@ -16,7 +16,7 @@ afterEach(() => {
   while (cleanups.length) cleanups.pop()!();
 });
 
-async function setup() {
+async function setup(appOpts: { secureCookie?: boolean } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gastos-auth-"));
   const store: Store = openStore(tmp);
   cleanups.push(() => {
@@ -26,7 +26,7 @@ async function setup() {
   const clock = { now: T0 };
   const auth = createAuth(store, { now: () => clock.now });
   const { secret, codes } = await auth.setUser(PASSWORD);
-  const app = createApp(store, { publicDir, auth });
+  const app = createApp(store, { publicDir, auth, ...appOpts });
   const key = base32Decode(secret);
   const code = () => totpCode(key, clock.now);
   const login = (password: string, codigo: string, headers: Record<string, string> = {}) =>
@@ -129,6 +129,21 @@ describe("login", () => {
     expect((await get("/api/sesion", cookie)).status).toBe(200);
     expect((await get("/api/collection?path=gastos", cookie)).status).toBe(200);
     expect((await get("/", cookie)).status).toBe(200);
+  });
+
+  it("adds Secure to every session cookie when secureCookie is on (served over HTTPS)", async () => {
+    const { login, code, cookieOf, clock, app } = await setup({ secureCookie: true });
+    const r = await login(PASSWORD, code());
+    expect(r.status).toBe(200);
+    expect(r.headers.get("set-cookie")).toMatch(/; HttpOnly; SameSite=Strict; Secure$/);
+    const cookie = cookieOf(r);
+    clock.now += 2 * 3600_000; // past the hourly refresh threshold
+    const refreshed = await app.request("/api/sesion", { headers: { cookie } });
+    expect(refreshed.status).toBe(200);
+    expect(refreshed.headers.get("set-cookie")).toMatch(/; Secure$/);
+    const out = await app.request("/api/logout", { method: "POST", headers: { cookie } });
+    expect(out.status).toBe(200);
+    expect(out.headers.get("set-cookie")).toMatch(/^sesion=;.*Max-Age=0.*; Secure$/);
   });
 
   it("stores only a hash of the session token", async () => {
