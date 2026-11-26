@@ -90,8 +90,18 @@ export function createApp(store: Store, opts: { publicDir: string; auth?: Auth }
     app.use(async (c, next) => {
       const method = c.req.method;
       if (method !== "GET" && method !== "HEAD") {
+        // Compare hosts, not schemes: behind `tailscale serve` the browser is on https:// while this
+        // server sees http://. Browsers can't forge Host or X-Forwarded-Host cross-site without a
+        // CORS preflight, which this server never grants.
         const origin = c.req.header("origin");
-        if (origin && origin !== new URL(c.req.url).origin) return c.json({ error: "origen no permitido" }, 403);
+        if (origin) {
+          let host: string | undefined;
+          try {
+            host = new URL(origin).host;
+          } catch {}
+          const own = [c.req.header("host") ?? new URL(c.req.url).host, c.req.header("x-forwarded-host")];
+          if (!host || !own.includes(host)) return c.json({ error: "origen no permitido" }, 403);
+        }
       }
       if (PUBLIC.has(c.req.path)) return next();
       const token = getCookie(c, COOKIE);
@@ -103,7 +113,8 @@ export function createApp(store: Store, opts: { publicDir: string; auth?: Auth }
       }
       c.set("sesion", s.hash);
       await next();
-      if (s.refresh) c.res.headers.append("Set-Cookie", sessionCookie(token!, s.refresh));
+      // Skip when the handler just ended the session (logout), or the old token would come back.
+      if (s.refresh && auth.isValid(s.hash)) c.res.headers.append("Set-Cookie", sessionCookie(token!, s.refresh));
     });
   }
 
