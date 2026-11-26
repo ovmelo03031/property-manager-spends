@@ -1,7 +1,7 @@
 # Property Manager Spends
 
 Personal expense, receipt, and document tracker for **apartment 2810 · The Gate Tower 1 · Al Reem Island, Abu Dhabi**.
-It runs in Docker on a homelab server and is used from a phone or laptop over Tailscale. There is no login: access control is the tailnet.
+It runs in Docker on a homelab server and is used from a phone or laptop over Tailscale. On top of the tailnet, every device signs in with a password and a TOTP code.
 
 The user interface is in **Spanish** and all amounts are in **AED**.
 
@@ -56,7 +56,15 @@ docker compose logs -f
 
 On first start with a seed, the log shows `Seed cargado: …`.
 
-Open it from any device on your tailnet:
+Create the login. Until you do, nobody can get in (the log shows `Sin usuario: nadie puede entrar…`):
+
+```bash
+docker compose exec gastos bun scripts/auth.ts alta
+```
+
+It asks for a password (at least 12 characters) and prints, once, a TOTP secret and 8 backup codes. Add the secret to an authenticator app (manual key, time-based) and keep the backup codes somewhere other than this server.
+
+Open it from any device on your tailnet and sign in with the password and the 6-digit code:
 
 ```
 http://<server-name>:8080     # with MagicDNS
@@ -64,6 +72,28 @@ http://100.x.y.z:8080         # with the Tailscale IP
 ```
 
 On a phone, use "Add to Home Screen" to open it as an app.
+
+Each browser (and the home-screen app) signs in once and keeps its own session: 30 days, renewed while you use it, up to 90 days. "Cerrar sesión" ends the current one; "Cerrar todas las sesiones" ends them on every device.
+
+### Login administration
+
+```bash
+docker compose exec gastos bun scripts/auth.ts alta
+```
+
+Creates the user, or replaces the password, TOTP secret, and backup codes (it ends every session). Use it if you lose the authenticator app and the backup codes.
+
+```bash
+docker compose exec gastos bun scripts/auth.ts desbloquear
+```
+
+After 5 failed attempts the login waits 30 seconds, doubling on each further failure up to 15 minutes. This clears the wait.
+
+```bash
+docker compose exec gastos bun scripts/auth.ts cerrar-sesiones
+```
+
+Ends every session, for example after losing a device. Open tabs return to the login within 30 seconds.
 
 ### HTTPS (optional)
 
@@ -75,11 +105,13 @@ tailscale serve --bg 8080
 
 The app is then available at `https://<server>.<your-tailnet>.ts.net`. In this setup, set `BIND_ADDR=127.0.0.1` in `.env`, since Tailscale forwards traffic from localhost.
 
+> Enabling Tailscale HTTPS publishes the machine name and the tailnet DNS name in a public Certificate Transparency ledger, and issued certificates cannot be revoked ([Tailscale docs](https://tailscale.com/kb/1153/enabling-https)). Plain HTTP inside the tailnet is the default for that reason; WireGuard already encrypts the traffic.
+
 ## Configuration
 
 | Variable | Where | Default | Purpose |
 |---|---|---|---|
-| `BIND_ADDR` | `.env` (compose) | `0.0.0.0` | Host interface the port binds to. Set it to the Tailscale IP or `127.0.0.1`. |
+| `BIND_ADDR` | `.env` (compose) | required | Host interface the port binds to: the Tailscale IP, or `127.0.0.1` with `tailscale serve`. Compose refuses to start without it. |
 | `HOST_PORT` | `.env` (compose) | `8080` | Host port. |
 | `PORT` | container | `8080` | Port the server listens on. |
 | `DATA_DIR` | container | `./data` (`/data` in Docker) | SQLite database and uploaded files. |
@@ -90,8 +122,6 @@ The app is then available at `https://<server>.<your-tailnet>.ts.net`. In this s
 | `NTFY_CLICK` | `.env` (compose) | — | Optional URL opened when you tap a notification (e.g. the app's tailnet address). |
 
 Expiry notifications: documents with a "Vence" date send a push 30 and 7 days before, on the day, and once after they expire. Each step is sent once (recorded in the `avisos` collection) and the server checks every 6 hours. The notification carries the document's name and date, so it must go to a self-hosted ntfy reachable only over Tailscale.
-
-> The compose default `0.0.0.0` exposes the app to your whole LAN. Always set `BIND_ADDR`.
 
 ## Data and backups
 
@@ -114,9 +144,13 @@ To restore: stop the container, extract the archive into `data/`, rename `gastos
 
 ## Security
 
-The app has **no authentication**. Its only protection is that it answers inside your tailnet:
+Two layers protect the app: it answers only inside your tailnet, and every route needs a session.
 
-- Set `BIND_ADDR` to the Tailscale IP (or `127.0.0.1` with `tailscale serve`). Never expose it through port forwarding or a public tunnel.
+- **Login:** one user, password hashed with argon2id plus a TOTP code (or a single-use backup code). A TOTP code works once.
+- **Sessions:** a random token in an `HttpOnly`, `SameSite=Strict` cookie; the database stores only its SHA-256. The cookie has no `Secure` flag because the app is reached over plain HTTP inside the tailnet.
+- **Other checks:** writes from another origin are rejected, failed logins lock the form for a growing wait, and files are revalidated on every view so the browser cache never shows them without a session.
+- The login is an extra layer, not permission to expose the app. Set `BIND_ADDR` to the Tailscale IP (or `127.0.0.1` with `tailscale serve`). Never expose it through port forwarding or a public tunnel.
+- `data/` and backups are **not encrypted**. They hold the data, the password hash, and the TOTP secret, so anyone with a copy needs only the password. Keep backups somewhere private.
 - The repository is **public**. `data/`, `seed/`, and `.env` are git-ignored because they contain personal data (MOU with names and Emirates ID, receipts); never commit them.
 - Use Tailscale ACLs to limit which tailnet devices can reach it.
 - Uploads are limited to PNG, JPEG, GIF, WebP, and PDF, up to 20 MB each.
@@ -162,25 +196,35 @@ The Docker base image follows the same rule: it is pinned by version and digest 
 
 ```
 src/server.ts           Entry point: config, seed, HTTP server, graceful shutdown
-src/app.ts              Hono routes: JSON documents, files, SSE, static files
+src/app.ts              Hono routes: access control, JSON documents, files, SSE, static files
+src/auth.ts             Login: password, TOTP, backup codes, sessions, lockout
 src/store.ts            SQLite document store, path parsing, seed loader
 test/api.test.ts        API contract tests
+test/auth.test.ts       Login and session tests
 public/index.html       Page markup
+public/login.html, login.js   Login page
 public/styles.css       Styles (light and dark themes)
 public/app.js           UI logic (plain JS, no build step)
 public/claude-shim.js   Data layer: window.claude API on top of the server
 public/manifest.webmanifest, icon.svg   PWA metadata
 seed-example/           Format of the (git-ignored) seed/ folder
 scripts/backup.sh       Backup of data/
+scripts/auth.ts         Login administration: alta, desbloquear, cerrar-sesiones
 ```
 
 ## API overview
 
 The server is a small path-based JSON document store, Firestore style. A path with an even number of segments is a document (`gastos/abc`, `config/apto`); an odd number is a collection (`gastos`).
 
+Every route except `/api/health`, `/api/login`, and the login page's files needs the session cookie. Without it, `/api/*` and `/_blob/*` answer 401 `{error:"no autenticado"}` and pages redirect to `/login.html`.
+
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/health` | Health check |
+| `GET` | `/api/health` | Health check (public) |
+| `POST` | `/api/login` | Sign in with `{password, codigo}` (public). 401 on bad credentials, 429 with `Retry-After` while locked |
+| `GET` | `/api/sesion` | 200 with a valid session, 401 otherwise |
+| `POST` | `/api/logout` | End the current session |
+| `POST` | `/api/logout-all` | End every session |
 | `GET` | `/api/collection?path=` | List documents in a collection |
 | `GET` | `/api/doc?path=` | Read one document |
 | `PUT` | `/api/doc?path=` | Create or replace a document |

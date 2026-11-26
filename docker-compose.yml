@@ -5,9 +5,9 @@ services:
     container_name: gastos-gate-towers
     restart: unless-stopped
     ports:
-      # Por defecto escucha solo en la IP de Tailscale del host (definida en .env).
-      # Si no defines BIND_ADDR, queda en todas las interfaces de tu LAN.
-      - "${BIND_ADDR:-0.0.0.0}:${HOST_PORT:-8080}:8080"
+      # Escucha solo en la IP de Tailscale del host (o 127.0.0.1 con tailscale serve), definida en .env.
+      # Es obligatoria: sin ella el puerto quedaría abierto a toda la LAN, con la contraseña viajando en claro.
+      - "${BIND_ADDR:?Define BIND_ADDR en .env con la IP de Tailscale del host}:${HOST_PORT:-8080}:8080"
     volumes:
       - ./data:/data            # base de datos y archivos (haz respaldo de esta carpeta)
       - ./seed:/app/seed:ro     # datos iniciales; solo se cargan si la base está vacía
