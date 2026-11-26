@@ -101,7 +101,7 @@ describe("assets", () => {
     assert.equal(blob.status, 200);
     assert.equal(blob.headers.get("content-type"), "image/png");
     assert.equal(blob.headers.get("content-disposition"), `inline; filename*=UTF-8''${encodeURIComponent("recibo ñ.png")}`);
-    assert.equal(blob.headers.get("cache-control"), "private, max-age=31536000, immutable");
+    assert.equal(blob.headers.get("cache-control"), "private, no-cache");
     assert.deepEqual(Buffer.from(await blob.arrayBuffer()), png);
     assert.equal(blob.headers.get("accept-ranges"), "bytes");
 
