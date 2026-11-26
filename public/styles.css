@@ -31,6 +31,7 @@ h2{font-size:20px;font-weight:700}
 .eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
 .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}
+.sesbar{display:flex;justify-content:flex-end;gap:8px;margin-bottom:-8px}
 header.top{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--ink);padding-bottom:16px}
 header.top .meta{display:flex;flex-direction:column;gap:6px}
 .btn{font:600 14px var(--f-body);border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
@@ -215,7 +216,7 @@ tr.key td{font-weight:600}
 .sheet button{text-align:left;min-height:48px;padding:0 12px;border:0;border-radius:10px;background:none;font:600 15px var(--f-body);color:var(--ink);cursor:pointer}
 .sheet button:hover{background:var(--sunk)}
 @media (max-width:720px){
-  .tabs,header.top .actions{display:none}
+  .tabs,header.top .actions,.sesbar{display:none}
   header.top{padding-bottom:12px}
   #sub{display:none}
   body{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
